@@ -71,7 +71,7 @@ class MCPClient {
      */
     async processQuery(query) {
         /**
-         * Process a query using Claude and available tools
+         * Process a query using llm and available tools
          *
          * @param query - The user's input query
          * @returns Processed response as a string
@@ -86,12 +86,13 @@ class MCPClient {
             model: "qwen-turbo",
             messages,
             tools: this.tools,
+            parallel_tool_calls: true,
         });
 
         const finalText = [];
-        const toolResults = [];
         const delta = response.choices[0]?.message;
         const { tool_calls, content } = delta || {};
+        // console.dir(delta, { depth: null })
 
         if (tool_calls?.length && content) {
             finalText.push('llm 调用工具的思考过程🤔: ', content);
@@ -99,30 +100,56 @@ class MCPClient {
             finalText.push(content);
         }
         if (tool_calls?.length) {
-            // Execute tool call
-            const toolCall = tool_calls[0];
-            const functionName = toolCall?.function?.name;
-            const functionArgs = JSON.parse(toolCall?.function?.arguments || `{}`);
-            const toolName = functionName;
-            const toolArgs = functionArgs;
+            // Execute tool calls in parallel
+            const toolCalls = await Promise.all(tool_calls.map(async (toolCall) => {
+                const functionName = toolCall?.function?.name;
+                const functionArgs = JSON.parse(toolCall?.function?.arguments || `{}`);
+                const toolName = functionName;
+                const toolArgs = functionArgs;
 
-            console.log(`\n[Calling tool ${toolName} with args ${JSON.stringify(toolArgs)}]`);
-            const result = await this.mcp.callTool({
-                name: toolName,
-                arguments: toolArgs,
-            });
-            toolResults.push(result);
-            
-            // Continue conversation with tool results
+                console.log(`\n[Calling tool ${toolName} with args ${JSON.stringify(toolArgs)}, waiting...]`);
+                const toolResponse = await this.mcp.callTool({
+                    name: toolName,
+                    arguments: toolArgs,
+                });
+
+                return {
+                    toolCall,
+                    functionName,
+                    functionArgs,
+                    toolResponse
+                };
+            }));
+
+            // 将所有 AI 决策的工具调用信息添加到消息中
             messages.push({
-                role: "user",
-                content: result.content,
+                role: "assistant",
+                content: null,
+                tool_calls: toolCalls.map(({ toolCall, functionName, functionArgs }) => ({
+                    id: toolCall.id,
+                    type: "function",
+                    function: {
+                        name: functionName,
+                        arguments: JSON.stringify(functionArgs),
+                    }
+                }))
             });
-            // Get next response from Claude
+
+            // 将所有工具调用的结果添加到消息中
+            toolCalls.forEach(({ functionName, toolResponse }) => {
+                messages.push({
+                    role: "tool",
+                    name: functionName,
+                    content: JSON.stringify(toolResponse)
+                });
+            });
+            // console.dir(messages, { depth: null })
+            // Get next response from llm, 假设这里只会调用一次工具（实际应用中可能需要循环调用工具直到没有工具调用为止）
             const response = await this.callModel({
                 model: "qwen-turbo",
                 messages,
             });
+            // console.dir(response, { depth: null })
             finalText.push(response.choices[0]?.message?.content || "");
         }
         return finalText.join("\n");

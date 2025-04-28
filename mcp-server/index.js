@@ -1,11 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-// // import fs from 'fs';
-// import path from 'path';
-// import { fileURLToPath } from 'url';
 import {
     getAlerts,
-    getForecast
+    getForecast,
+    calculate
 } from './tools/index.js'
 
 // Create server instance
@@ -23,6 +21,7 @@ class WeatherServer extends McpServer {
         // Auto register all tools from tools directory
         this.registerTool(getAlerts());
         this.registerTool(getForecast());
+        this.registerTool(calculate());
     }
 
     registerTool(toolConfig) {
