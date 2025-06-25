@@ -63,6 +63,17 @@ class MCPClient {
     }
 
     /**
+     * 带工具调用信息的查询处理方法（用于Web版本）
+     */
+    async processQueryWithToolInfo(query) {
+        const result = await this.processQuery(query);
+        return {
+            response: result.response || result,
+            toolCalls: result.toolCalls || []
+        };
+    }
+
+    /**
      * 调用大模型
      * 模型会自己感知需要调哪些工具
      * 
@@ -99,6 +110,8 @@ class MCPClient {
         } else if (content) {
             finalText.push(content);
         }
+        let executedToolCalls = [];
+        
         if (tool_calls?.length) {
             // Execute tool calls in parallel
             const toolCalls = await Promise.all(tool_calls.map(async (toolCall) => {
@@ -108,24 +121,29 @@ class MCPClient {
                 const toolArgs = functionArgs;
 
                 console.log(`\n[Calling tool ${toolName} with args ${JSON.stringify(toolArgs)}, waiting...]`);
+                const startTime = Date.now();
                 const toolResponse = await this.mcp.callTool({
                     name: toolName,
                     arguments: toolArgs,
                 });
+                const endTime = Date.now();
 
                 return {
                     toolCall,
                     functionName,
                     functionArgs,
-                    toolResponse
+                    toolResponse,
+                    executionTime: endTime - startTime
                 };
             }));
+            
+            executedToolCalls = toolCalls;
 
             // 将所有 AI 决策的工具调用信息添加到消息中
             messages.push({
                 role: "assistant",
                 content: null,
-                tool_calls: toolCalls.map(({ toolCall, functionName, functionArgs }) => ({
+                tool_calls: executedToolCalls.map(({ toolCall, functionName, functionArgs }) => ({
                     id: toolCall.id,
                     type: "function",
                     function: {
@@ -136,7 +154,7 @@ class MCPClient {
             });
 
             // 将所有工具调用的结果添加到消息中
-            toolCalls.forEach(({ functionName, toolResponse }) => {
+            executedToolCalls.forEach(({ functionName, toolResponse }) => {
                 messages.push({
                     role: "tool",
                     name: functionName,
@@ -152,7 +170,24 @@ class MCPClient {
             // console.dir(response, { depth: null })
             finalText.push(response.choices[0]?.message?.content || "");
         }
-        return finalText.join("\n");
+        
+        const responseText = finalText.join("\n");
+        
+        // 如果有工具调用，返回带工具信息的结果
+        if (executedToolCalls.length > 0) {
+            return {
+                response: responseText,
+                toolCalls: executedToolCalls.map(({ functionName, functionArgs, toolResponse, executionTime }) => ({
+                    name: functionName,
+                    arguments: functionArgs,
+                    result: toolResponse,
+                    executionTime
+                }))
+            };
+        }
+        
+        // TODO FIXEDME
+        return responseText;
     }
 
     /**
@@ -198,6 +233,9 @@ class MCPClient {
     }
 }
 
+// Export MCPClient class for use in web server
+export { MCPClient };
+
 async function main() {
     if (process.argv.length < 3) {
         console.log("Usage: node <path_to_client_script> <path_to_server_script>");
@@ -216,4 +254,7 @@ async function main() {
     }
 }
 
-main();
+// Only run main if this file is executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+    main();
+}
