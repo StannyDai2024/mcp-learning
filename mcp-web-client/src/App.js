@@ -6,7 +6,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import './App.css';
 
-const API_BASE = 'http://localhost:3001/api';
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3001/api';
 
 function App() {
   const [messages, setMessages] = useState([]);
