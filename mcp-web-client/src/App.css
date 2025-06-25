@@ -208,20 +208,30 @@ body {
 
 /* ==================== 消息样式 ==================== */
 .message {
-  padding: 24px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 16px 24px;
   animation: messageSlideIn 0.3s ease-out;
+  display: flex;
+  justify-content: center;
 }
 
-.message:last-child {
-  border-bottom: none;
+.message-inner {
+  width: 100%;
+  max-width: 768px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
 }
 
-.message.user {
-  background: var(--secondary-bg);
+.message.user .message-inner {
+  flex-direction: row-reverse;
 }
 
 .message.assistant {
+  background: var(--primary-bg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.message.user {
   background: var(--primary-bg);
 }
 
@@ -230,27 +240,104 @@ body {
   border-left: 4px solid var(--accent-red);
 }
 
-.message-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+.message:last-child.assistant {
+  border-bottom: none;
 }
 
-.message-header strong {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-primary);
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 500;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.message.user .message-avatar {
+  background: #5f6368;
+  color: white;
+}
+
+.message.assistant .message-avatar {
+  background: var(--accent-green);
+  color: white;
+}
+
+.message.error .message-avatar {
+  background: var(--accent-red);
+  color: white;
+}
+
+.message-content {
+  flex: 1;
+  max-width: calc(100% - 44px);
+}
+
+.message.user .message-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.message-bubble {
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  word-wrap: break-word;
+  max-width: fit-content;
+}
+
+.message.user .message-bubble {
+  background: #f1f3f4;
+  color: var(--text-primary);
+  border-bottom-right-radius: var(--radius-sm);
+  max-width: 75%;
+}
+
+.message.assistant .message-bubble {
+  background: var(--secondary-bg);
+  color: var(--text-primary);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.message.error .message-bubble {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--accent-red);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.message-header {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.message.user .message-header {
+  text-align: right;
 }
 
 .content {
-  max-width: none;
   margin: 0;
-  line-height: 1.7;
-  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.message.user .content {
+  color: var(--text-primary);
+}
+
+.message.user .content code {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--text-primary);
+}
+
+.message.user .content pre {
+  background: #e8eaed;
   color: var(--text-primary);
 }
 
@@ -334,32 +421,78 @@ body {
 
 /* ==================== 工具调用样式 ==================== */
 .tool-calls-container {
-  margin: 16px 0;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  margin: 12px 0 16px 0;
+  border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--primary-bg);
+  border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
 }
 
+
+
 .tool-calls-header {
-  background: linear-gradient(135deg, var(--accent-blue), #1d4ed8);
-  color: white;
+  background: #f8f9fa;
+  color: var(--text-primary);
   padding: 12px 16px;
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 500;
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.tool-calls-container:has(.tool-calls-list) .tool-calls-header {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tool-calls-header:hover {
+  background: #e9ecef;
+}
+
+.tool-calls-title {
+  font-weight: 500;
+  flex: 1;
+}
+
+.tool-calls-toggle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease, color 0.2s ease;
+  margin-left: auto;
+}
+
+.tool-calls-toggle:hover {
+  color: var(--text-primary);
+}
+
+.tool-calls-toggle.expanded {
+  transform: rotate(0deg);
 }
 
 .tool-calls-icon {
   font-size: 1rem;
+  color: var(--text-muted);
 }
 
 .tool-calls-list {
   padding: 16px;
-  background: var(--secondary-bg);
+  background: var(--primary-bg);
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .tool-call-item {
@@ -376,24 +509,29 @@ body {
 }
 
 .tool-call-header {
-  background: var(--accent-green);
-  color: white;
+  background: var(--secondary-bg);
+  color: var(--text-primary);
   padding: 10px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 0.875rem;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .tool-name {
-  font-weight: 600;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: 0.2px;
 }
 
 .tool-time {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--primary-bg);
+  color: var(--text-muted);
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 0.75rem;
+  border: 1px solid var(--border-color);
 }
 
 .tool-call-details {
@@ -579,7 +717,30 @@ body {
   }
 
   .message {
-    padding: 20px 16px;
+    padding: 12px 16px;
+  }
+
+  .message-inner {
+    gap: 8px;
+  }
+
+  .message-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.875rem;
+  }
+
+  .message-content {
+    max-width: calc(100% - 36px);
+  }
+
+  .message-bubble {
+    padding: 10px 14px;
+    font-size: 0.875rem;
+  }
+
+  .message.user .message-bubble {
+    max-width: 85%;
   }
 
   .welcome-message {
@@ -603,6 +764,10 @@ body {
 
   .input-container {
     padding: 16px;
+  }
+
+  .input-wrapper {
+    max-width: none;
   }
 
   .input-container textarea {
@@ -636,7 +801,30 @@ body {
   }
 
   .message {
-    padding: 16px 12px;
+    padding: 8px 12px;
+  }
+
+  .message-inner {
+    gap: 6px;
+  }
+
+  .message-avatar {
+    width: 24px;
+    height: 24px;
+    font-size: 0.75rem;
+  }
+
+  .message-content {
+    max-width: calc(100% - 30px);
+  }
+
+  .message-bubble {
+    padding: 8px 12px;
+    font-size: 0.8125rem;
+  }
+
+  .message.user .message-bubble {
+    max-width: 90%;
   }
 
   .welcome-message {

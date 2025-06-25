@@ -93,44 +93,51 @@ function App() {
 
   // 工具调用展示组件
   const ToolCallsDisplay = ({ toolCalls }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    
     if (!toolCalls || toolCalls.length === 0) return null;
 
     return (
       <div className="tool-calls-container">
-        <div className="tool-calls-header">
+        <div className="tool-calls-header" onClick={() => setIsExpanded(!isExpanded)}>
           <span className="tool-calls-icon">🔧</span>
           <span className="tool-calls-title">AI 使用了以下工具</span>
+          <span className={`tool-calls-toggle ${isExpanded ? 'expanded' : ''}`}>
+            {isExpanded ? '▼' : '▶'}
+          </span>
         </div>
-        <div className="tool-calls-list">
-          {toolCalls.map((toolCall, index) => (
-            <div key={index} className="tool-call-item">
-              <div className="tool-call-header">
-                <span className="tool-name">{toolCall.name}</span>
-                <span className="tool-time">{toolCall.executionTime}ms</span>
-              </div>
-              <div className="tool-call-details">
-                <div className="tool-arguments">
-                  <strong>参数:</strong>
-                  <pre className="tool-args-code">
-                    {JSON.stringify(toolCall.arguments, null, 2)}
-                  </pre>
+        {isExpanded && (
+          <div className="tool-calls-list">
+            {toolCalls.map((toolCall, index) => (
+              <div key={index} className="tool-call-item">
+                <div className="tool-call-header">
+                  <span className="tool-name">{toolCall.name}</span>
+                  <span className="tool-time">{toolCall.executionTime}ms</span>
                 </div>
-                <div className="tool-result">
-                  <strong>结果:</strong>
-                  <div className="tool-result-content">
-                    {typeof toolCall.result === 'object' ? (
-                      <pre className="tool-result-code">
-                        {JSON.stringify(toolCall.result, null, 2)}
-                      </pre>
-                    ) : (
-                      <span className="tool-result-text">{String(toolCall.result)}</span>
-                    )}
+                <div className="tool-call-details">
+                  <div className="tool-arguments">
+                    <strong>参数:</strong>
+                    <pre className="tool-args-code">
+                      {JSON.stringify(toolCall.arguments, null, 2)}
+                    </pre>
+                  </div>
+                  <div className="tool-result">
+                    <strong>结果:</strong>
+                    <div className="tool-result-content">
+                      {typeof toolCall.result === 'object' ? (
+                        <pre className="tool-result-code">
+                          {JSON.stringify(toolCall.result, null, 2)}
+                        </pre>
+                      ) : (
+                        <span className="tool-result-text">{String(toolCall.result)}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -259,32 +266,48 @@ function App() {
         
                  {messages.map((msg, index) => (
            <div key={index} className={`message ${msg.role}`}>
-             <div className="message-header">
-               <strong>
-                 {msg.role === 'user' ? '👤 你' : 
-                  msg.role === 'assistant' ? '🤖 助手' : '❌ 错误'}
-               </strong>
-             </div>
-             
-             {/* 工具调用信息展示 */}
-             {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
-               <ToolCallsDisplay toolCalls={msg.toolCalls} />
-             )}
-             
-             <div className="content">
-               {msg.role === 'assistant' ? (
-                 <MarkdownRenderer>{msg.content}</MarkdownRenderer>
-               ) : (
-                 <span className="plain-text">{msg.content}</span>
-               )}
+             <div className="message-inner">
+               <div className="message-avatar">
+                 {msg.role === 'user' ? '👤' : 
+                  msg.role === 'assistant' ? '🤖' : '❌'}
+               </div>
+               
+               <div className="message-content">
+                 <div className="message-header">
+                   {msg.role === 'user' ? '你' : 
+                    msg.role === 'assistant' ? '助手' : '错误'}
+                 </div>
+                 
+                 <div className="message-bubble">
+                   {/* 工具调用信息展示 */}
+                   {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
+                     <ToolCallsDisplay toolCalls={msg.toolCalls} />
+                   )}
+                   
+                   <div className="content">
+                     {msg.role === 'assistant' ? (
+                       <MarkdownRenderer>{msg.content}</MarkdownRenderer>
+                     ) : (
+                       <span className="plain-text">{msg.content}</span>
+                     )}
+                   </div>
+                 </div>
+               </div>
              </div>
            </div>
          ))}
         
         {loading && (
           <div className="message assistant">
-            <div className="message-header"><strong>🤖 助手</strong></div>
-            <div className="loading">正在思考中...</div>
+            <div className="message-inner">
+              <div className="message-avatar">🤖</div>
+              <div className="message-content">
+                <div className="message-header">助手</div>
+                <div className="message-bubble">
+                  <div className="loading">正在思考中...</div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
