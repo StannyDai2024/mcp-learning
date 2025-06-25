@@ -312,22 +312,71 @@ function App() {
         )}
       </div>
 
-      <div className="input-container">
-        <div className="input-wrapper">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={connected ? "输入你的问题... (Enter发送, Shift+Enter换行)" : "等待后端连接..."}
-            disabled={loading || !connected}
-            rows="2"
-          />
-          <button 
-            onClick={sendMessage} 
-            disabled={loading || !connected || !input.trim()}
-          >
-            {loading ? '⏳' : '发送'}
-          </button>
+      <div className="bottom-section">
+        {messages.length > 0 && (
+          <div className="example-questions-bottom">
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("计算 15 + 27")}
+              disabled={loading || !connected}
+            >
+              🧮 计算 15 + 27
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("请告诉我经纬度 40.7128, -74.0060 的天气预报")}
+              disabled={loading || !connected}
+            >
+              🌤️ 纽约天气预报
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("加利福尼亚州有什么天气警报吗？")}
+              disabled={loading || !connected}
+            >
+              ⚠️ 加州天气警报
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("125 除以 5 等于多少？")}
+              disabled={loading || !connected}
+            >
+              🔢 除法计算
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("请告诉我经洛杉矶的天气预报")}
+              disabled={loading || !connected}
+            >
+              ☀️ 洛杉矶天气
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("纽约州有天气警报吗？")}
+              disabled={loading || !connected}
+            >
+              🌪️ 纽约州警报
+            </button>
+          </div>
+        )}
+        
+        <div className="input-container">
+          <div className="input-wrapper">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={connected ? "输入你的问题... (Enter发送, Shift+Enter换行)" : "等待后端连接..."}
+              disabled={loading || !connected}
+              rows="2"
+            />
+            <button 
+              onClick={sendMessage} 
+              disabled={loading || !connected || !input.trim()}
+            >
+              {loading ? '⏳' : '发送'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

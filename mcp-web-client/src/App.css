@@ -599,14 +599,63 @@ body {
 }
 
 /* ==================== 输入区域 ==================== */
-.input-container {
-  padding: 24px;
-  background: var(--primary-bg);
-  border-top: 1px solid var(--border-color);
+/* ==================== 底部区域 ==================== */
+.bottom-section {
   position: sticky;
   bottom: 0;
+  background: var(--primary-bg);
+  border-top: 1px solid var(--border-color);
   backdrop-filter: blur(10px);
   background-color: rgba(255, 255, 255, 0.95);
+  z-index: 100;
+}
+
+.example-questions-bottom {
+  display: flex;
+  gap: 8px;
+  padding: 16px 24px 8px 24px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.example-questions-bottom::-webkit-scrollbar {
+  display: none;
+}
+
+.example-btn-bottom {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.example-btn-bottom:hover:not(:disabled) {
+  background: var(--accent-blue);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.example-btn-bottom:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.input-container {
+  padding: 24px;
+}
+
+.bottom-section:has(.example-questions-bottom) .input-container {
+  padding: 16px 24px 24px 24px;
 }
 
 .input-wrapper {
@@ -762,8 +811,22 @@ body {
     font-size: 0.875rem;
   }
 
+  .example-questions-bottom {
+    padding: 12px 16px 6px 16px;
+    gap: 6px;
+  }
+
+  .example-btn-bottom {
+    padding: 6px 12px;
+    font-size: 0.75rem;
+  }
+
   .input-container {
     padding: 16px;
+  }
+
+  .bottom-section:has(.example-questions-bottom) .input-container {
+    padding: 12px 16px 16px 16px;
   }
 
   .input-wrapper {
@@ -831,7 +894,21 @@ body {
     padding: 32px 16px;
   }
 
+  .example-questions-bottom {
+    padding: 8px 12px 4px 12px;
+    gap: 4px;
+  }
+
+  .example-btn-bottom {
+    padding: 4px 10px;
+    font-size: 0.7rem;
+  }
+
   .input-container {
     padding: 12px;
+  }
+
+  .bottom-section:has(.example-questions-bottom) .input-container {
+    padding: 8px 12px 12px 12px;
   }
 }
