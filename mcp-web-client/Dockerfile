@@ -22,29 +22,19 @@ FROM nginx:alpine
 # 复制构建结果到nginx目录
 COPY --from=0 /app/build /usr/share/nginx/html
 
-# 创建nginx配置文件
-RUN echo 'server { \
-    listen $PORT; \
-    server_name localhost; \
-    location / { \
-        root /usr/share/nginx/html; \
-        index index.html index.htm; \
-        try_files $uri $uri/ /index.html; \
-    } \
-    error_page 500 502 503 504 /50x.html; \
-    location = /50x.html { \
-        root /usr/share/nginx/html; \
-    } \
-}' > /etc/nginx/conf.d/default.conf.template
+# 创建简单的nginx配置
+RUN echo 'server {\
+    listen 80;\
+    server_name localhost;\
+    location / {\
+        root /usr/share/nginx/html;\
+        index index.html index.htm;\
+        try_files $uri $uri/ /index.html;\
+    }\
+}' > /etc/nginx/conf.d/default.conf
 
-# 创建启动脚本
-RUN echo '#!/bin/sh\nenvsubst "\$PORT" < /etc/nginx/conf.d/default.conf.template > /etc/nginx/conf.d/default.conf\nnginx -g "daemon off;"' > /start.sh && chmod +x /start.sh
-
-# 设置默认端口
-ENV PORT=80
-
-# 暴露端口
-EXPOSE $PORT
+# 暴露80端口
+EXPOSE 80
 
 # 启动nginx
-CMD ["/start.sh"] 
+CMD ["nginx", "-g", "daemon off;"] 
