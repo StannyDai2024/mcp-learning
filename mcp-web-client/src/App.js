@@ -290,20 +290,22 @@ function App() {
       </div>
 
       <div className="input-container">
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={handleKeyPress}
-          placeholder={connected ? "输入你的问题... (Enter发送, Shift+Enter换行)" : "等待后端连接..."}
-          disabled={loading || !connected}
-          rows="2"
-        />
-        <button 
-          onClick={sendMessage} 
-          disabled={loading || !connected || !input.trim()}
-        >
-          {loading ? '⏳' : '发送'}
-        </button>
+        <div className="input-wrapper">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder={connected ? "输入你的问题... (Enter发送, Shift+Enter换行)" : "等待后端连接..."}
+            disabled={loading || !connected}
+            rows="2"
+          />
+          <button 
+            onClick={sendMessage} 
+            disabled={loading || !connected || !input.trim()}
+          >
+            {loading ? '⏳' : '发送'}
+          </button>
+        </div>
       </div>
     </div>
   );
