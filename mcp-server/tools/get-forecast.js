@@ -2,7 +2,7 @@ import { makeNWSRequest, NWS_API_BASE, z } from './utils.js';
 
 export default function getForecast() {
     return {
-        name: "get-forecast",
+        name: "get_forecast",
         description: "Get weather forecast for a location",
         schema: {
             latitude: z.number().min(-90).max(90).describe("Latitude of the location"),

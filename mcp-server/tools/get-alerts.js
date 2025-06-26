@@ -2,7 +2,7 @@ import { makeNWSRequest, formatAlert, NWS_API_BASE, z } from './utils.js';
 
 export default function getAlerts() {
     return {
-        name: "get-alerts",
+        name: "get_alerts",
         description: "Get weather alerts for a state",
         schema: {
             state: z.string().length(2).describe("Two-letter state code (e.g. CA, NY)"),

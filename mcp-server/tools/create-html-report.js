@@ -4,7 +4,7 @@ import path from 'path';
 
 export default function createHtmlReport() {
     return {
-        name: "create-html-report",
+        name: "create_html_report",
         description: "生成精美的HTML格式团建规划报告",
         schema: {
             selectedPlan: z.object({
