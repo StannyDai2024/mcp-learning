@@ -710,6 +710,19 @@ body {
   line-height: 1.6;
 }
 
+.tool-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+.error-message {
+  color: #dc2626;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
 /* ==================== 加载状态 ==================== */
 .loading {
   color: var(--text-muted);

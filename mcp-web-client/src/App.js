@@ -322,9 +322,13 @@ function App() {
                     </pre>
                   </div>
                   <div className="tool-result">
-                    <strong>结果:</strong>
+                    <strong>{toolCall.success === false ? '错误:' : '结果:'}</strong>
                     <div className="tool-result-content">
-                      {typeof toolCall.result === 'object' ? (
+                      {toolCall.success === false ? (
+                        <div className="tool-error">
+                          <span className="error-message">❌ {toolCall.error || '工具执行失败'}</span>
+                        </div>
+                      ) : typeof toolCall.result === 'object' ? (
                         <pre className="tool-result-code">
                           {JSON.stringify(toolCall.result, null, 2)}
                         </pre>
@@ -491,7 +495,7 @@ function App() {
                              {tool.status === 'pending' && '⏳ 等待中'}
                              {tool.status === 'executing' && '⚡ 执行中'}
                              {tool.status === 'completed' && `✅ 完成 (${tool.executionTime}ms)`}
-                             {tool.status === 'error' && '❌ 错误'}
+                             {tool.status === 'error' && `❌ 失败 (${tool.executionTime}ms)`}
                            </span>
                          </div>
                        ))}

@@ -198,8 +198,8 @@ class MCPClient {
             phase: 'tool_execution'
         });
 
-        // 执行工具调用
-        const executedToolCalls = await Promise.all(
+        // 执行工具调用（改进错误处理）
+        const executedToolCalls = await Promise.allSettled(
             toolCalls.map(async (toolCall, index) => {
                 const functionName = toolCall.function.name;
                 const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
@@ -245,9 +245,13 @@ class MCPClient {
                         functionName,
                         functionArgs,
                         toolResponse,
-                        executionTime
+                        executionTime,
+                        success: true
                     };
                 } catch (error) {
+                    const executionTime = Date.now() - startTime;
+                    
+                    // 通知单个工具失败
                     onUpdate({
                         type: 'tool_progress',
                         data: { 
@@ -255,40 +259,93 @@ class MCPClient {
                             arguments: functionArgs,
                             status: 'error',
                             error: error.message,
+                            executionTime,
                             index 
                         },
                         phase: 'tool_execution'
                     });
-                    throw error;
+
+                    // 返回失败信息而不是抛出错误
+                    return {
+                        toolCall,
+                        functionName,
+                        functionArgs,
+                        toolResponse: null,
+                        error: error.message,
+                        executionTime,
+                        success: false
+                    };
                 }
             })
         );
 
+        // 处理Promise.allSettled的结果
+        const processedToolCalls = executedToolCalls.map(result => {
+            if (result.status === 'fulfilled') {
+                return result.value;
+            } else {
+                // 理论上不会到这里，因为我们在上面catch了所有错误
+                return {
+                    success: false,
+                    error: result.reason?.message || 'Unknown error',
+                    toolResponse: null
+                };
+            }
+        });
+
+        // 分离成功和失败的工具调用
+        const successfulCalls = processedToolCalls.filter(call => call.success);
+        const failedCalls = processedToolCalls.filter(call => !call.success);
+
         // 构建包含工具调用结果的消息
-        messages.push({
-            role: "assistant",
-            content: null,  // 不包含思考内容，避免重复
-            tool_calls: executedToolCalls.map(({ toolCall, functionName, functionArgs }) => ({
-                id: toolCall.id,
-                type: "function",
-                function: {
-                    name: functionName,
-                    arguments: JSON.stringify(functionArgs),
-                }
-            }))
-        });
-
-        // 添加工具调用结果
-        executedToolCalls.forEach(({ functionName, toolResponse }) => {
+        if (successfulCalls.length > 0 || failedCalls.length > 0) {
+            // 添加助手的工具调用请求（包括所有尝试的调用）
             messages.push({
-                role: "tool",
-                name: functionName,
-                content: JSON.stringify(toolResponse)
+                role: "assistant",
+                content: null,
+                tool_calls: processedToolCalls.map(({ toolCall, functionName, functionArgs }) => ({
+                    id: toolCall.id,
+                    type: "function",
+                    function: {
+                        name: functionName,
+                        arguments: JSON.stringify(functionArgs),
+                    }
+                }))
             });
-        });
 
-        // 第二次LLM调用获取最终回答
-        await this.getFinalResponseStream(messages, executedToolCalls, onUpdate);
+            // 添加工具调用结果（成功的）
+            successfulCalls.forEach(({ functionName, toolResponse }) => {
+                messages.push({
+                    role: "tool",
+                    name: functionName,
+                    content: JSON.stringify(toolResponse)
+                });
+            });
+
+            // 添加工具调用失败信息
+            failedCalls.forEach(({ functionName, error }) => {
+                messages.push({
+                    role: "tool",
+                    name: functionName,
+                    content: JSON.stringify({
+                        error: error,
+                        message: `工具 ${functionName} 执行失败: ${error}`
+                    })
+                });
+            });
+
+            // 如果有失败的工具，给LLM额外的指导
+            if (failedCalls.length > 0) {
+                const failedToolNames = failedCalls.map(call => call.functionName).join(', ');
+                messages.push({
+                    role: "user",
+                    content: `注意：工具 ${failedToolNames} 执行失败了。请基于可用的信息尽力回答用户的问题，如果信息不足，请说明哪些工具失败了，并给出可能的原因或建议。`
+                });
+            }
+        }
+
+        // 第二次LLM调用获取最终回答（无论工具是否成功都会执行）
+        await this.getFinalResponseStream(messages, processedToolCalls, onUpdate);
     }
 
     /**
@@ -322,15 +379,20 @@ class MCPClient {
             }
         }
 
+        console.log('🔍 Final Response:', finalContent);
+        console.log('🔍 Tool Results:', executedToolCalls);
+
         // 完成
         onUpdate({
             type: 'complete',
             data: { 
                 finalContent: finalContent,  // 最终回答内容
-                toolCalls: executedToolCalls.map(({ functionName, functionArgs, toolResponse, executionTime }) => ({
+                toolCalls: executedToolCalls.map(({ functionName, functionArgs, toolResponse, executionTime, success, error }) => ({
                     name: functionName,
                     arguments: functionArgs,
-                    result: toolResponse,
+                    result: success ? toolResponse : null,
+                    error: success ? null : error,
+                    success: success,
                     executionTime
                 }))
             },
