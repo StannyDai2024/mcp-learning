@@ -4,16 +4,12 @@ import {
     getAlerts,
     getForecast,
     calculate,
-    // 团建活动规划工具
-    getLocation,
-    askUserPreference,
-    searchRestaurants,
-    generatePlan,
+    // 自定义业务工具
     createHtmlReport
 } from './tools/index.js'
 
 const server = new McpServer({
-    name: "weather",
+    name: "custom-business-tools",
     version: "1.0.0",
     capabilities: {
         resources: {},
@@ -27,25 +23,20 @@ function registerTool(toolConfig) {
     return server;
 }
 
-// 原有工具
+// 原有示例工具（可选保留）
 registerTool(getAlerts())
 registerTool(getForecast())
 registerTool(calculate());
 
-// 团建活动规划工具
-registerTool(getLocation());
-registerTool(askUserPreference());
-registerTool(searchRestaurants());
-registerTool(generatePlan());
+// 自定义业务工具
 registerTool(createHtmlReport());
 
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.log("MCP Server running on stdio");
+    console.log("自定义业务MCP服务器已启动");
+    console.log("- 高德地图功能请使用官方MCP服务");
+    console.log("- 本服务器专注于业务逻辑工具（如HTML报告生成）");
 }
 
-main().catch((error) => {
-    console.error("Fatal error in main():", error);
-    process.exit(1);
-});
+main().catch(console.error);

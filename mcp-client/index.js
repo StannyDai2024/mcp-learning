@@ -733,7 +733,7 @@ class MCPClient {
         const workingMessages = [...messages];
         
         const response = await this.callModel({
-            model: "qwen-turbo",
+            model: "qwen-plus",
             messages: workingMessages,
             tools: this.tools,
             parallel_tool_calls: true,
