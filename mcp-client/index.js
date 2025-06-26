@@ -93,72 +93,8 @@ class MCPClient {
         const workingMessages = [...messages];
 
         try {
-            // 第一次调用：流式获取LLM响应
-            const response = await this.callModel({
-                model: "qwen-turbo",
-                messages: workingMessages,
-                tools: this.tools,
-                parallel_tool_calls: true,
-                stream: true,  // 启用流式响应
-            });
-
-            let content = '';
-            let toolCalls = [];
-            let finishReason = null;
-
-            // 处理流式响应
-            for await (const chunk of response) {
-                const delta = chunk.choices[0]?.delta;
-                finishReason = chunk.choices[0]?.finish_reason;
-
-                // 处理内容流
-                if (delta?.content) {
-                    content += delta.content;
-                    onUpdate({
-                        type: 'content',
-                        data: content,
-                        phase: 'thinking'
-                    });
-                }
-
-                // 处理工具调用
-                if (delta?.tool_calls) {
-                    toolCalls = this.mergeToolCalls(toolCalls, delta.tool_calls);
-                }
-            }
-
-            // 如果LLM决定调用工具
-            if (toolCalls && toolCalls.length > 0) {
-                onUpdate({
-                    type: 'thinking_complete',
-                    data: { content, toolCalls: toolCalls.map(tc => tc.function.name) },
-                    phase: 'thinking'
-                });
-
-                await this.executeToolsStreamWithHistory(toolCalls, onUpdate, workingMessages, content, onMessagesUpdate);
-            } else {
-                // 没有工具调用，添加AI回复到消息历史
-                workingMessages.push({
-                    role: "assistant",
-                    content: content
-                });
-                
-                // 更新消息历史
-                if (onMessagesUpdate) {
-                    onMessagesUpdate(workingMessages);
-                }
-
-                // 直接完成
-                onUpdate({
-                    type: 'complete',
-                    data: { 
-                        content: content,  // 最终内容就是思考内容
-                        toolCalls: [] 
-                    },
-                    phase: 'complete'
-                });
-            }
-
+            // 🔥 新功能：多轮工具调用（支持消息历史）
+            await this.processQueryWithMultiRoundToolsWithHistory(workingMessages, onUpdate, onMessagesUpdate);
         } catch (error) {
             onUpdate({
                 type: 'error',
@@ -167,6 +103,182 @@ class MCPClient {
             });
             throw error;
         }
+    }
+
+    /**
+     * 🔥 新增：支持消息历史的多轮工具调用
+     */
+    async processQueryWithMultiRoundToolsWithHistory(messages, onUpdate, onMessagesUpdate, maxRounds = 5) {
+        let roundCount = 0;
+        let allExecutedToolCalls = []; // 记录所有轮次的工具调用
+        
+        while (roundCount < maxRounds) {
+            roundCount++;
+            console.log(`🔄 多轮对话模式 - 第 ${roundCount} 轮工具调用...`);
+            
+            // 第一阶段：AI思考并决定工具调用
+            onUpdate({
+                type: 'content',
+                data: '',
+                phase: roundCount === 1 ? 'thinking' : `thinking_round_${roundCount}`
+            });
+
+            const response = await this.callModel({
+                model: "qwen-turbo",
+                messages,
+                tools: this.tools,
+                parallel_tool_calls: true,
+                stream: true
+            });
+
+            let currentContent = '';
+            let currentToolCalls = [];
+
+            // 流式获取AI的思考过程和工具调用决策
+            for await (const chunk of response) {
+                const delta = chunk.choices[0]?.delta;
+                
+                if (delta?.content) {
+                    currentContent += delta.content;
+                    onUpdate({
+                        type: 'content',
+                        data: currentContent,
+                        phase: roundCount === 1 ? 'thinking' : `thinking_round_${roundCount}`
+                    });
+                }
+
+                if (delta?.tool_calls) {
+                    currentToolCalls = this.mergeToolCalls(currentToolCalls, delta.tool_calls);
+                }
+            }
+
+            // 结束当前轮次的思考阶段
+            onUpdate({
+                type: 'thinking_complete',
+                data: { 
+                    content: currentContent,
+                    toolCalls: currentToolCalls.map(tc => tc.function.name),
+                    round: roundCount
+                },
+                phase: 'thinking_complete'
+            });
+
+            if (currentToolCalls?.length > 0) {
+                // 第二阶段：执行工具调用
+                console.log(`🔧 多轮对话模式 - 第 ${roundCount} 轮执行 ${currentToolCalls.length} 个工具...`);
+                
+                const roundToolCalls = await this.executeToolsForRound(
+                    currentToolCalls, 
+                    onUpdate, 
+                    messages, 
+                    currentContent,
+                    roundCount
+                );
+                
+                // 记录本轮工具调用
+                allExecutedToolCalls.push(...roundToolCalls);
+                
+                // 继续下一轮循环，让AI基于工具结果决定是否需要更多工具
+                continue;
+                
+            } else {
+                // 没有工具调用，AI决定结束，生成最终回答
+                console.log(`✅ 多轮对话模式 - 第 ${roundCount} 轮无工具调用，开始生成最终回答...`);
+                
+                // 如果有内容，说明AI已经给出了最终回答
+                if (currentContent.trim()) {
+                    // 添加AI的最终回复到消息历史
+                    messages.push({
+                        role: "assistant",
+                        content: currentContent
+                    });
+
+                    // 更新消息历史
+                    if (onMessagesUpdate) {
+                        onMessagesUpdate(messages);
+                    }
+
+                    onUpdate({
+                        type: 'complete',
+                        data: { 
+                            finalContent: currentContent,
+                            toolCalls: allExecutedToolCalls.map(this.formatToolCallForFrontend),
+                            totalRounds: roundCount
+                        },
+                        phase: 'complete'
+                    });
+                } else {
+                    // 没有内容，需要调用最终回答生成
+                    await this.getFinalResponseStreamMultiRoundWithHistory(messages, allExecutedToolCalls, onUpdate, onMessagesUpdate, roundCount);
+                }
+                
+                break;
+            }
+        }
+
+        // 达到最大轮次限制
+        if (roundCount >= maxRounds) {
+            console.log(`⚠️ 多轮对话模式 - 达到最大轮次限制 (${maxRounds})，强制生成最终回答...`);
+            await this.getFinalResponseStreamMultiRoundWithHistory(messages, allExecutedToolCalls, onUpdate, onMessagesUpdate, roundCount);
+        }
+    }
+
+    /**
+     * 🔥 新增：支持消息历史的多轮工具调用最终回答生成
+     */
+    async getFinalResponseStreamMultiRoundWithHistory(messages, allExecutedToolCalls, onUpdate, onMessagesUpdate, totalRounds) {
+        onUpdate({
+            type: 'final_thinking_start',
+            data: { totalRounds },
+            phase: 'final_response'
+        });
+
+        const response = await this.callModel({
+            model: "qwen-turbo",
+            messages,
+            stream: true
+            // 注意：最终回答阶段不传入tools，确保AI专注于总结和回答
+        });
+
+        let finalContent = '';
+
+        for await (const chunk of response) {
+            const delta = chunk.choices[0]?.delta;
+            
+            if (delta?.content) {
+                finalContent += delta.content;
+                onUpdate({
+                    type: 'final_content',
+                    data: finalContent,
+                    phase: 'final_response'
+                });
+            }
+        }
+
+        // 添加AI的最终回复到消息历史
+        messages.push({
+            role: "assistant",
+            content: finalContent
+        });
+
+        // 更新消息历史
+        if (onMessagesUpdate) {
+            onMessagesUpdate(messages);
+        }
+
+        console.log(`🔍 多轮对话模式 - 最终回答 (${totalRounds} 轮):`, finalContent);
+        console.log(`🔍 多轮对话模式 - 累计工具调用数量:`, allExecutedToolCalls.length);
+
+        // 完成
+        onUpdate({
+            type: 'complete',
+            data: { 
+                finalContent: finalContent,
+                toolCalls: allExecutedToolCalls.map(this.formatToolCallForFrontend),
+                totalRounds: totalRounds
+            },
+            phase: 'complete'
+        });
     }
 
     /**
@@ -181,61 +293,8 @@ class MCPClient {
         ];
 
         try {
-            // 第一次调用：流式获取LLM响应
-            const response = await this.callModel({
-                model: "qwen-turbo",
-                messages,
-                tools: this.tools,
-                parallel_tool_calls: true,
-                stream: true,  // 启用流式响应
-            });
-
-            let content = '';
-            let toolCalls = [];
-            let finishReason = null;
-
-            // 处理流式响应
-            for await (const chunk of response) {
-                const delta = chunk.choices[0]?.delta;
-                finishReason = chunk.choices[0]?.finish_reason;
-
-                // 处理内容流
-                if (delta?.content) {
-                    content += delta.content;
-                    onUpdate({
-                        type: 'content',
-                        data: content,
-                        phase: 'thinking'
-                    });
-                }
-
-                // 处理工具调用
-                if (delta?.tool_calls) {
-                    toolCalls = this.mergeToolCalls(toolCalls, delta.tool_calls);
-                }
-            }
-
-            // 如果LLM决定调用工具
-            if (toolCalls && toolCalls.length > 0) {
-                onUpdate({
-                    type: 'thinking_complete',
-                    data: { content, toolCalls: toolCalls.map(tc => tc.function.name) },
-                    phase: 'thinking'
-                });
-
-                await this.executeToolsStream(toolCalls, onUpdate, messages, content);
-            } else {
-                // 没有工具调用，直接完成
-                onUpdate({
-                    type: 'complete',
-                    data: { 
-                        content: content,  // 最终内容就是思考内容
-                        toolCalls: [] 
-                    },
-                    phase: 'complete'
-                });
-            }
-
+            // 🔥 新功能：多轮工具调用
+            await this.processQueryWithMultiRoundTools(messages, onUpdate);
         } catch (error) {
             onUpdate({
                 type: 'error',
@@ -243,6 +302,120 @@ class MCPClient {
                 phase: 'error'
             });
             throw error;
+        }
+    }
+
+    /**
+     * 🔥 新增：多轮工具调用的核心方法
+     * 支持AI根据前一轮工具结果继续调用更多工具
+     */
+    async processQueryWithMultiRoundTools(messages, onUpdate, maxRounds = 5) {
+        let roundCount = 0;
+        let allExecutedToolCalls = []; // 记录所有轮次的工具调用
+        
+        while (roundCount < maxRounds) {
+            roundCount++;
+            console.log(`🔄 开始第 ${roundCount} 轮工具调用...`);
+            
+            // 第一阶段：AI思考并决定工具调用
+            onUpdate({
+                type: 'content',
+                data: '',
+                phase: roundCount === 1 ? 'thinking' : `thinking_round_${roundCount}`
+            });
+
+            const response = await this.callModel({
+                model: "qwen-turbo",
+                messages,
+                tools: this.tools,
+                parallel_tool_calls: true,
+                stream: true
+            });
+
+            let currentContent = '';
+            let currentToolCalls = [];
+
+            // 流式获取AI的思考过程和工具调用决策
+            for await (const chunk of response) {
+                const delta = chunk.choices[0]?.delta;
+                
+                if (delta?.content) {
+                    currentContent += delta.content;
+                    onUpdate({
+                        type: 'content',
+                        data: currentContent,
+                        phase: roundCount === 1 ? 'thinking' : `thinking_round_${roundCount}`
+                    });
+                }
+
+                if (delta?.tool_calls) {
+                    currentToolCalls = this.mergeToolCalls(currentToolCalls, delta.tool_calls);
+                }
+            }
+
+            // 结束当前轮次的思考阶段
+            onUpdate({
+                type: 'thinking_complete',
+                data: { 
+                    content: currentContent,
+                    toolCalls: currentToolCalls.map(tc => tc.function.name),
+                    round: roundCount
+                },
+                phase: 'thinking_complete'
+            });
+
+            if (currentToolCalls?.length > 0) {
+                // 第二阶段：执行工具调用
+                console.log(`🔧 第 ${roundCount} 轮执行 ${currentToolCalls.length} 个工具...`);
+                
+                const roundToolCalls = await this.executeToolsForRound(
+                    currentToolCalls, 
+                    onUpdate, 
+                    messages, 
+                    currentContent,
+                    roundCount
+                );
+                
+                // 记录本轮工具调用
+                allExecutedToolCalls.push(...roundToolCalls);
+                
+                // 继续下一轮循环，让AI基于工具结果决定是否需要更多工具
+                continue;
+                
+            } else {
+                // 没有工具调用，AI决定结束，生成最终回答
+                console.log(`✅ 第 ${roundCount} 轮无工具调用，开始生成最终回答...`);
+                
+                // 如果有内容，说明AI已经给出了最终回答
+                if (currentContent.trim()) {
+                    // 添加AI的最终回复到消息历史
+                    messages.push({
+                        role: "assistant",
+                        content: currentContent
+                    });
+
+                    onUpdate({
+                        type: 'complete',
+                        data: { 
+                            finalContent: currentContent,
+                            toolCalls: allExecutedToolCalls.map(this.formatToolCallForFrontend),
+                            totalRounds: roundCount
+                        },
+                        phase: 'complete'
+                    });
+                } else {
+                    // 没有内容，需要调用最终回答生成
+                    await this.getFinalResponseStreamMultiRound(messages, allExecutedToolCalls, onUpdate, roundCount);
+                }
+                
+                break;
+            }
+        }
+
+        // 达到最大轮次限制
+        if (roundCount >= maxRounds) {
+            console.log(`⚠️ 达到最大轮次限制 (${maxRounds})，强制生成最终回答...`);
+            await this.getFinalResponseStreamMultiRound(messages, allExecutedToolCalls, onUpdate, roundCount);
         }
     }
 
@@ -276,6 +449,235 @@ class MCPClient {
         }
         
         return result;
+    }
+
+    /**
+     * 🔥 新增：执行单轮工具调用
+     */
+    async executeToolsForRound(toolCalls, onUpdate, messages, initialContent, roundCount) {
+        // 通知开始工具调用
+        onUpdate({
+            type: 'tool_start',
+            data: { 
+                tools: toolCalls.map(tc => ({
+                    name: tc.function.name,
+                    arguments: JSON.parse(tc.function.arguments || '{}')
+                })),
+                round: roundCount
+            },
+            phase: 'tool_execution'
+        });
+
+        // 执行工具调用
+        const executedToolCalls = await Promise.allSettled(
+            toolCalls.map(async (toolCall, index) => {
+                const functionName = toolCall.function.name;
+                const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
+                
+                // 通知单个工具开始执行
+                onUpdate({
+                    type: 'tool_progress',
+                    data: { 
+                        name: functionName,
+                        arguments: functionArgs,
+                        status: 'executing',
+                        index,
+                        round: roundCount
+                    },
+                    phase: 'tool_execution'
+                });
+
+                const startTime = Date.now();
+                
+                try {
+                    const toolResponse = await this.mcp.callTool({
+                        name: functionName,
+                        arguments: functionArgs,
+                    });
+                    
+                    const executionTime = Date.now() - startTime;
+
+                    // 通知单个工具完成
+                    onUpdate({
+                        type: 'tool_progress',
+                        data: { 
+                            name: functionName,
+                            arguments: functionArgs,
+                            status: 'completed',
+                            result: toolResponse,
+                            executionTime,
+                            index,
+                            round: roundCount
+                        },
+                        phase: 'tool_execution'
+                    });
+
+                    return {
+                        toolCall,
+                        functionName,
+                        functionArgs,
+                        toolResponse,
+                        executionTime,
+                        success: true,
+                        round: roundCount
+                    };
+                } catch (error) {
+                    const executionTime = Date.now() - startTime;
+                    
+                    // 通知单个工具失败
+                    onUpdate({
+                        type: 'tool_progress',
+                        data: { 
+                            name: functionName,
+                            arguments: functionArgs,
+                            status: 'error',
+                            error: error.message,
+                            executionTime,
+                            index,
+                            round: roundCount
+                        },
+                        phase: 'tool_execution'
+                    });
+
+                    return {
+                        toolCall,
+                        functionName,
+                        functionArgs,
+                        toolResponse: null,
+                        error: error.message,
+                        executionTime,
+                        success: false,
+                        round: roundCount
+                    };
+                }
+            })
+        );
+
+        // 处理工具调用结果
+        const processedToolCalls = executedToolCalls.map(result => 
+            result.status === 'fulfilled' ? result.value : {
+                success: false,
+                error: result.reason?.message || 'Unknown error',
+                toolResponse: null,
+                round: roundCount
+            }
+        );
+
+        // 分离成功和失败的工具调用
+        const successfulCalls = processedToolCalls.filter(call => call.success);
+        const failedCalls = processedToolCalls.filter(call => !call.success);
+
+        // 将工具调用结果添加到消息历史
+        if (successfulCalls.length > 0 || failedCalls.length > 0) {
+            // 添加助手的工具调用请求
+            messages.push({
+                role: "assistant",
+                content: initialContent || null,
+                tool_calls: processedToolCalls.map(({ toolCall, functionName, functionArgs }) => ({
+                    id: toolCall.id,
+                    type: "function",
+                    function: {
+                        name: functionName,
+                        arguments: JSON.stringify(functionArgs),
+                    }
+                }))
+            });
+
+            // 添加工具调用结果
+            successfulCalls.forEach(({ functionName, toolResponse }) => {
+                messages.push({
+                    role: "tool",
+                    name: functionName,
+                    content: JSON.stringify(toolResponse)
+                });
+            });
+
+            // 添加失败的工具调用信息
+            failedCalls.forEach(({ functionName, error }) => {
+                messages.push({
+                    role: "tool",
+                    name: functionName,
+                    content: JSON.stringify({
+                        error: error,
+                        message: `工具 ${functionName} 执行失败: ${error}`
+                    })
+                });
+            });
+
+            // 如果有失败的工具，给AI额外指导
+            if (failedCalls.length > 0) {
+                const failedToolNames = failedCalls.map(call => call.functionName).join(', ');
+                messages.push({
+                    role: "user",
+                    content: `注意：工具 ${failedToolNames} 执行失败了。请基于可用的信息继续处理，如果需要可以尝试其他工具。`
+                });
+            }
+        }
+
+        return processedToolCalls;
+    }
+
+    /**
+     * 🔥 新增：多轮工具调用后的最终回答生成
+     */
+    async getFinalResponseStreamMultiRound(messages, allExecutedToolCalls, onUpdate, totalRounds) {
+        onUpdate({
+            type: 'final_thinking_start',
+            data: { totalRounds },
+            phase: 'final_response'
+        });
+
+        const response = await this.callModel({
+            model: "qwen-turbo",
+            messages,
+            stream: true
+            // 注意：最终回答阶段不传入tools，确保AI专注于总结和回答
+        });
+
+        let finalContent = '';
+
+        for await (const chunk of response) {
+            const delta = chunk.choices[0]?.delta;
+            
+            if (delta?.content) {
+                finalContent += delta.content;
+                onUpdate({
+                    type: 'final_content',
+                    data: finalContent,
+                    phase: 'final_response'
+                });
+            }
+        }
+
+        console.log(`🔍 多轮工具调用最终回答 (${totalRounds} 轮):`, finalContent);
+        console.log(`🔍 累计工具调用数量:`, allExecutedToolCalls.length);
+
+        // 完成
+        onUpdate({
+            type: 'complete',
+            data: { 
+                finalContent: finalContent,
+                toolCalls: allExecutedToolCalls.map(this.formatToolCallForFrontend),
+                totalRounds: totalRounds
+            },
+            phase: 'complete'
+        });
+    }
+
+    /**
+     * 🔥 新增：格式化工具调用结果供前端显示
+     */
+    formatToolCallForFrontend = (toolCallData) => {
+        const { functionName, functionArgs, toolResponse, executionTime, success, error, round } = toolCallData;
+        return {
+            name: functionName,
+            arguments: functionArgs,
+            result: success ? toolResponse : null,
+            error: success ? null : error,
+            success: success,
+            executionTime: executionTime || 0,
+            round: round || 1
+        };
     }
 
     /**
@@ -733,7 +1135,7 @@ class MCPClient {
         const workingMessages = [...messages];
         
         const response = await this.callModel({
-            model: "qwen-plus",
+            model: "qwen-turbo",
             messages: workingMessages,
             tools: this.tools,
             parallel_tool_calls: true,
