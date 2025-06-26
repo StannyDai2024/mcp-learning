@@ -19,10 +19,14 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [tools, setTools] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [mcpStatus, setMcpStatus] = useState(null); // 🔥 新增：MCP状态详情
   
   // 🔥 新增：多轮对话控制
   const [multiChatEnabled, setMultiChatEnabled] = useState(false); // 默认关闭
   const [sessionId, setSessionId] = useState(null);
+  
+  // 🔥 新增：工具调用展开状态管理（避免health检查重置展开状态）
+  const [toolCallsExpandedState, setToolCallsExpandedState] = useState({});
 
   // 🔥 新增：管理sessionId
   useEffect(() => {
@@ -43,21 +47,23 @@ function App() {
     const newEnabled = !multiChatEnabled;
     setMultiChatEnabled(newEnabled);
     
-    if (newEnabled) {
-      // 开启多轮对话时，可选择是否清空聊天记录开始新会话
-      if (messages.length > 0) {
-        const shouldClear = window.confirm('开启多轮对话模式建议清空当前聊天记录，开始新的会话。是否清空？');
-        if (shouldClear) {
-          setMessages([]);
+          if (newEnabled) {
+        // 开启多轮对话时，可选择是否清空聊天记录开始新会话
+        if (messages.length > 0) {
+          const shouldClear = window.confirm('开启多轮对话模式建议清空当前聊天记录，开始新的会话。是否清空？');
+          if (shouldClear) {
+            setMessages([]);
+            setToolCallsExpandedState({}); // 🔥 清空工具调用展开状态
+          }
         }
       }
-    }
   };
 
   // 🔥 新增：重置会话
   const resetSession = () => {
     if (window.confirm('确认要重置当前会话吗？这将清空所有聊天记录。')) {
       setMessages([]);
+      setToolCallsExpandedState({}); // 🔥 清空工具调用展开状态
       if (multiChatEnabled) {
         const newSessionId = generateSessionId();
         setSessionId(newSessionId);
@@ -71,9 +77,50 @@ function App() {
     const checkConnection = async () => {
       try {
         const response = await axios.get(`${API_BASE}/health`);
-        setConnected(response.data.success && response.data.mcpConnected);
+        // 🔥 更新：适配多MCP架构的连接检查
+        const mcpStatusData = response.data.mcp;
+        const hasConnection = mcpStatusData && (
+          (mcpStatusData.amap && mcpStatusData.amap.connected) || 
+          (mcpStatusData.custom && mcpStatusData.custom.connected)
+        );
+        const newConnected = response.data.success && hasConnection;
+        
+        // 🔥 优化：只在状态真正变化时才更新，避免不必要的重新渲染
+        setConnected(prevConnected => {
+          if (prevConnected !== newConnected) {
+            console.log('🔍 连接状态变化:', prevConnected, '->', newConnected);
+            return newConnected;
+          }
+          return prevConnected;
+        });
+        
+        setMcpStatus(prevStatus => {
+          // 深度比较MCP状态，只在实际变化时更新
+          const hasChanged = !prevStatus || 
+            JSON.stringify(prevStatus) !== JSON.stringify(mcpStatusData);
+          
+          if (hasChanged) {
+            console.log('🔍 MCP状态更新:', mcpStatusData);
+            return mcpStatusData;
+          }
+          return prevStatus;
+        });
+        
       } catch (error) {
-        setConnected(false);
+        console.error('连接检查失败:', error);
+        setConnected(prevConnected => {
+          if (prevConnected !== false) {
+            console.log('🔍 连接状态变化: 连接失败');
+            return false;
+          }
+          return prevConnected;
+        });
+        setMcpStatus(prevStatus => {
+          if (prevStatus !== null) {
+            return null;
+          }
+          return prevStatus;
+        });
       }
     };
 
@@ -358,14 +405,21 @@ function App() {
   };
 
   // 工具调用展示组件
-  const ToolCallsDisplay = ({ toolCalls }) => {
-    const [isExpanded, setIsExpanded] = useState(false);
+  const ToolCallsDisplay = ({ toolCalls, messageIndex }) => {
+    const isExpanded = toolCallsExpandedState[messageIndex] || false;
+    
+    const toggleExpanded = () => {
+      setToolCallsExpandedState(prev => ({
+        ...prev,
+        [messageIndex]: !isExpanded
+      }));
+    };
     
     if (!toolCalls || toolCalls.length === 0) return null;
 
     return (
       <div className="tool-calls-container">
-        <div className="tool-calls-header" onClick={() => setIsExpanded(!isExpanded)}>
+        <div className="tool-calls-header" onClick={toggleExpanded}>
           <span className="tool-calls-icon">🔧</span>
           <span className="tool-calls-title">AI 使用了以下工具</span>
           <span className={`tool-calls-toggle ${isExpanded ? 'expanded' : ''}`}>
@@ -512,6 +566,21 @@ function App() {
             <span className={`connection-status ${connected ? 'connected' : 'disconnected'}`}>
               {connected ? '🟢 已连接' : '🔴 未连接'}
             </span>
+            {/* 🔥 新增：详细MCP状态显示 */}
+            {mcpStatus && (
+              <div className="mcp-status-details">
+                {mcpStatus.amap && (
+                  <span className={`mcp-item ${mcpStatus.amap.connected ? 'connected' : 'disconnected'}`}>
+                    🗺️ 高德({mcpStatus.amap.toolCount})
+                  </span>
+                )}
+                {mcpStatus.custom && (
+                  <span className={`mcp-item ${mcpStatus.custom.connected ? 'connected' : 'disconnected'}`}>
+                    🔧 自定义({mcpStatus.custom.toolCount})
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         
@@ -531,59 +600,59 @@ function App() {
             <div className="example-questions">
               <button 
                 className="example-btn"
-                onClick={() => handleExampleClick("计算 15 + 27")}
-                disabled={loading || !connected}
-              >
-                🧮 计算 15 + 27
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("请告诉我经纬度 40.7128, -74.0060 的天气预报")}
-                disabled={loading || !connected}
-              >
-                🌤️ 纽约天气预报
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("加利福尼亚州有什么天气警报吗？")}
-                disabled={loading || !connected}
-              >
-                ⚠️ 加州天气警报
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("125 除以 5 等于多少？")}
-                disabled={loading || !connected}
-              >
-                🔢 除法计算
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("请告诉我经洛杉矶的天气预报")}
-                disabled={loading || !connected}
-              >
-                ☀️ 洛杉矶天气
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("纽约州有天气警报吗？")}
-                disabled={loading || !connected}
-              >
-                🌪️ 纽约州警报
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("帮我规划一个团建活动，我们有8个人想吃川菜")}
+                onClick={() => handleExampleClick("帮我规划一个团建活动，我们有8个人想在北京朝阳区吃川菜")}
                 disabled={loading || !connected}
               >
                 🍽️ 团建活动规划
               </button>
               <button 
                 className="example-btn"
-                onClick={() => handleExampleClick("获取我的位置信息")}
+                onClick={() => handleExampleClick("搜索北京国贸附近的餐厅")}
                 disabled={loading || !connected}
               >
-                📍 获取位置
+                🔍 搜索附近餐厅
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick("查询上海的天气情况")}
+                disabled={loading || !connected}
+              >
+                🌤️ 天气查询
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick("从北京西站到天安门怎么走？")}
+                disabled={loading || !connected}
+              >
+                🚶 路线导航
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick("将地址'北京市朝阳区国贸'转换为经纬度坐标")}
+                disabled={loading || !connected}
+              >
+                📍 地址转坐标
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick("搜索广州塔周边2公里内的景点")}
+                disabled={loading || !connected}
+              >
+                🗺️ 周边搜索
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick("我们公司在深圳南山区，想组织15人的聚餐，预算每人150元")}
+                disabled={loading || !connected}
+              >
+                👥 公司聚餐规划
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick("计算 15 + 27")}
+                disabled={loading || !connected}
+              >
+                🧮 简单计算
               </button>
             </div>
             <p className="tip">💡 或者在下方输入框中输入你的问题</p>
@@ -625,7 +694,7 @@ function App() {
 
                    {/* 工具调用信息展示（完成后） */}
                    {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && !msg.streaming && (
-                     <ToolCallsDisplay toolCalls={msg.toolCalls} />
+                     <ToolCallsDisplay toolCalls={msg.toolCalls} messageIndex={index} />
                    )}
                    
                                       <div className="content">
@@ -657,59 +726,59 @@ function App() {
           <div className="example-questions-bottom">
             <button 
               className="example-btn-bottom"
-              onClick={() => handleExampleClick("计算 15 + 27")}
-              disabled={loading || !connected}
-            >
-              🧮 计算 15 + 27
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("请告诉我经纬度 40.7128, -74.0060 的天气预报")}
-              disabled={loading || !connected}
-            >
-              🌤️ 纽约天气预报
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("加利福尼亚州有什么天气警报吗？")}
-              disabled={loading || !connected}
-            >
-              ⚠️ 加州天气警报
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("125 除以 5 等于多少？")}
-              disabled={loading || !connected}
-            >
-              🔢 除法计算
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("请告诉我经洛杉矶的天气预报")}
-              disabled={loading || !connected}
-            >
-              ☀️ 洛杉矶天气
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("纽约州有天气警报吗？")}
-              disabled={loading || !connected}
-            >
-              🌪️ 纽约州警报
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("帮我规划一个团建活动，我们有8个人想吃川菜")}
+              onClick={() => handleExampleClick("帮我规划一个团建活动，我们有8个人想在北京朝阳区吃川菜")}
               disabled={loading || !connected}
             >
               🍽️ 团建活动规划
             </button>
             <button 
               className="example-btn-bottom"
-              onClick={() => handleExampleClick("获取我的位置信息")}
+              onClick={() => handleExampleClick("搜索北京国贸附近的餐厅")}
               disabled={loading || !connected}
             >
-              📍 获取位置
+              🔍 搜索附近餐厅
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("查询上海的天气情况")}
+              disabled={loading || !connected}
+            >
+              🌤️ 天气查询
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("从北京西站到天安门怎么走？")}
+              disabled={loading || !connected}
+            >
+              🚶 路线导航
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("将地址'北京市朝阳区国贸'转换为经纬度坐标")}
+              disabled={loading || !connected}
+            >
+              📍 地址转坐标
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("搜索广州塔周边2公里内的景点")}
+              disabled={loading || !connected}
+            >
+              🗺️ 周边搜索
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("我们公司在深圳南山区，想组织15人的聚餐，预算每人150元")}
+              disabled={loading || !connected}
+            >
+              👥 公司聚餐规划
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("计算 15 + 27")}
+              disabled={loading || !connected}
+            >
+              🧮 简单计算
             </button>
           </div>
         )}

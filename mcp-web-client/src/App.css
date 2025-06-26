@@ -97,6 +97,40 @@ body {
   color: var(--accent-red);
 }
 
+/* 🔥 新增：MCP状态详情样式 */
+.mcp-status-details {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.mcp-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.mcp-item.connected {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: var(--accent-green);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.mcp-item.disconnected {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--accent-red);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
 .tools {
   font-size: 0.8125rem;
   color: var(--text-muted);
