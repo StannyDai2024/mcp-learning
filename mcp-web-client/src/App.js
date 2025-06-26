@@ -50,7 +50,8 @@ function App() {
   }, [connected]);
 
   const sendMessage = async (messageText = null) => {
-    const messageToSend = messageText || input;
+    const messageToSend = String(messageText || input || '');
+    // 检查消息是否为空或正在加载
     if (!messageToSend.trim() || loading) return;
 
     const userMessage = { role: 'user', content: messageToSend };
@@ -371,7 +372,7 @@ function App() {
               rows="2"
             />
             <button 
-              onClick={sendMessage} 
+              onClick={() => sendMessage()} 
               disabled={loading || !connected || !input.trim()}
             >
               {loading ? '⏳' : '发送'}
