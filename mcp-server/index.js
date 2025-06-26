@@ -3,7 +3,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
     getAlerts,
     getForecast,
-    calculate
+    calculate,
+    // 团建活动规划工具
+    getLocation,
+    askUserPreference,
+    searchRestaurants,
+    generatePlan,
+    createHtmlReport
 } from './tools/index.js'
 
 const server = new McpServer({
@@ -20,14 +26,23 @@ function registerTool(toolConfig) {
     server.tool(name, description, schema, handler);
     return server;
 }
+
+// 原有工具
 registerTool(getAlerts())
 registerTool(getForecast())
 registerTool(calculate());
 
+// 团建活动规划工具
+registerTool(getLocation());
+registerTool(askUserPreference());
+registerTool(searchRestaurants());
+registerTool(generatePlan());
+registerTool(createHtmlReport());
+
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("Weather MCP Server running on stdio");
+    console.log("MCP Server running on stdio");
 }
 
 main().catch((error) => {

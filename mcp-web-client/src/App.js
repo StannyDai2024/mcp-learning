@@ -8,12 +8,63 @@ import './App.css';
 
 const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3001/api';
 
+// 生成唯一sessionId
+const generateSessionId = () => {
+  return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+};
+
 function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [tools, setTools] = useState([]);
   const [connected, setConnected] = useState(false);
+  
+  // 🔥 新增：多轮对话控制
+  const [multiChatEnabled, setMultiChatEnabled] = useState(false); // 默认关闭
+  const [sessionId, setSessionId] = useState(null);
+
+  // 🔥 新增：管理sessionId
+  useEffect(() => {
+    if (multiChatEnabled && !sessionId) {
+      // 启用多轮对话时生成新的sessionId
+      const newSessionId = generateSessionId();
+      setSessionId(newSessionId);
+      console.log('🆔 新建会话:', newSessionId);
+    } else if (!multiChatEnabled && sessionId) {
+      // 关闭多轮对话时清除sessionId
+      setSessionId(null);
+      console.log('🧹 清除会话');
+    }
+  }, [multiChatEnabled, sessionId]);
+
+  // 🔥 新增：切换多轮对话模式
+  const toggleMultiChat = () => {
+    const newEnabled = !multiChatEnabled;
+    setMultiChatEnabled(newEnabled);
+    
+    if (newEnabled) {
+      // 开启多轮对话时，可选择是否清空聊天记录开始新会话
+      if (messages.length > 0) {
+        const shouldClear = window.confirm('开启多轮对话模式建议清空当前聊天记录，开始新的会话。是否清空？');
+        if (shouldClear) {
+          setMessages([]);
+        }
+      }
+    }
+  };
+
+  // 🔥 新增：重置会话
+  const resetSession = () => {
+    if (window.confirm('确认要重置当前会话吗？这将清空所有聊天记录。')) {
+      setMessages([]);
+      if (multiChatEnabled) {
+        const newSessionId = generateSessionId();
+        setSessionId(newSessionId);
+        console.log('🔄 重置会话:', newSessionId);
+      }
+    }
+  };
 
   // 检查后端连接状态
   useEffect(() => {
@@ -61,9 +112,14 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API_BASE}/chat`, {
-        message: messageToSend
-      });
+      // 🔥 修改：包含多轮对话信息
+      const requestBody = {
+        message: messageToSend,
+        multiChatEnabled,
+        sessionId: multiChatEnabled ? sessionId : undefined
+      };
+
+      const response = await axios.post(`${API_BASE}/chat`, requestBody);
 
       if (response.data.success) {
         const botMessage = { 
@@ -109,9 +165,19 @@ function App() {
     setMessages(prev => [...prev, initialBotMessage]);
 
     try {
+      // 🔥 修改：构建包含多轮对话信息的URL参数
+      const params = new URLSearchParams({
+        message: messageToSend
+      });
+      
+      if (multiChatEnabled && sessionId) {
+        params.append('multiChatEnabled', 'true');
+        params.append('sessionId', sessionId);
+      }
+
       // 建立SSE连接
       const eventSource = new EventSource(
-        `${API_BASE}/chat-stream?message=${encodeURIComponent(messageToSend)}`
+        `${API_BASE}/chat-stream?${params.toString()}`
       );
 
       eventSource.onmessage = (event) => {
@@ -401,13 +467,54 @@ function App() {
 
   return (
     <div className="app">
+      {/* 🔥 多轮对话控制面板 - 固定在右上角 */}
+      <div className="multi-chat-controls-fixed">
+        <div className="multi-chat-toggle">
+          <label className="toggle-label">
+            <span className="toggle-text">
+              {multiChatEnabled ? '💬 多轮对话' : '🔄 单轮对话'}
+            </span>
+            <input
+              type="checkbox"
+              checked={multiChatEnabled}
+              onChange={toggleMultiChat}
+              className="toggle-checkbox"
+            />
+            <span className="toggle-slider"></span>
+          </label>
+          {multiChatEnabled && (
+            <div className="session-info">
+              <span className="session-id">会话: {sessionId?.slice(-8)}</span>
+              <button 
+                className="reset-session-btn"
+                onClick={resetSession}
+                title="重置会话"
+              >
+                🔄
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="token-warning">
+          {multiChatEnabled ? (
+            <span className="warning-text">⚠️ 多轮模式消耗更多Token</span>
+          ) : (
+            <span className="save-text">💰 单轮模式节省Token</span>
+          )}
+        </div>
+      </div>
+
       <div className="header">
         <h1>🤖 MCP Chat Demo</h1>
-        <div className="status">
-          <span className={`connection-status ${connected ? 'connected' : 'disconnected'}`}>
-            {connected ? '🟢 已连接' : '🔴 未连接'}
-          </span>
+        
+        <div className="header-center">
+          <div className="status">
+            <span className={`connection-status ${connected ? 'connected' : 'disconnected'}`}>
+              {connected ? '🟢 已连接' : '🔴 未连接'}
+            </span>
+          </div>
         </div>
+        
         {tools.length > 0 && (
           <div className="tools">
             📦 可用工具: {tools.map(t => t.function.name).join(', ')}
@@ -463,6 +570,20 @@ function App() {
                 disabled={loading || !connected}
               >
                 🌪️ 纽约州警报
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick("帮我规划一个团建活动，我们有8个人想吃川菜")}
+                disabled={loading || !connected}
+              >
+                🍽️ 团建活动规划
+              </button>
+              <button 
+                className="example-btn"
+                onClick={() => handleExampleClick("获取我的位置信息")}
+                disabled={loading || !connected}
+              >
+                📍 获取位置
               </button>
             </div>
             <p className="tip">💡 或者在下方输入框中输入你的问题</p>
@@ -575,6 +696,20 @@ function App() {
               disabled={loading || !connected}
             >
               🌪️ 纽约州警报
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("帮我规划一个团建活动，我们有8个人想吃川菜")}
+              disabled={loading || !connected}
+            >
+              🍽️ 团建活动规划
+            </button>
+            <button 
+              className="example-btn-bottom"
+              onClick={() => handleExampleClick("获取我的位置信息")}
+              disabled={loading || !connected}
+            >
+              📍 获取位置
             </button>
           </div>
         )}
