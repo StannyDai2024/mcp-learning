@@ -176,7 +176,7 @@ export class MultiMCPClient {
     /**
      * 调用工具（智能路由）
      */
-    async callTool(toolName, arguments_) {
+    async callTool(toolName, arguments_, originalCallTool = null) {
         const { client, originalName, source } = this.getMcpClientForTool(toolName);
         
         if (!client) {
@@ -186,11 +186,19 @@ export class MultiMCPClient {
         console.log(`🔧 调用${source}工具: ${originalName}`);
 
         if (source === 'custom') {
-            // 自定义MCP使用MCPClient的方法
-            return await client.mcp.callTool({
-                name: originalName,
-                arguments: arguments_
-            });
+            // 🔥 修复：使用传入的原始callTool方法，避免递归调用
+            if (originalCallTool) {
+                return await originalCallTool({
+                    name: originalName,
+                    arguments: arguments_
+                });
+            } else {
+                // 如果没有传入原始方法，直接使用客户端方法（这种情况应该很少发生）
+                return await client.mcp.callTool({
+                    name: originalName,
+                    arguments: arguments_
+                });
+            }
         } else {
             // 高德MCP直接使用Client的方法
             return await client.callTool({
@@ -213,10 +221,10 @@ export class MultiMCPClient {
         this.customMcp.tools = this.allTools;
 
         try {
-            // 重写工具调用方法
+            // 🔥 修复：保存原始方法并传递给callTool避免递归
             const originalCallTool = this.customMcp.mcp.callTool.bind(this.customMcp.mcp);
             this.customMcp.mcp.callTool = async (request) => {
-                return await this.callTool(request.name, request.arguments);
+                return await this.callTool(request.name, request.arguments, originalCallTool);
             };
 
             const result = await this.customMcp.processQueryWithToolInfo(query);
@@ -247,7 +255,7 @@ export class MultiMCPClient {
         try {
             const originalCallTool = this.customMcp.mcp.callTool.bind(this.customMcp.mcp);
             this.customMcp.mcp.callTool = async (request) => {
-                return await this.callTool(request.name, request.arguments);
+                return await this.callTool(request.name, request.arguments, originalCallTool);
             };
 
             const result = await this.customMcp.processQueryWithMessages(messages);
@@ -276,7 +284,7 @@ export class MultiMCPClient {
         try {
             const originalCallTool = this.customMcp.mcp.callTool.bind(this.customMcp.mcp);
             this.customMcp.mcp.callTool = async (request) => {
-                return await this.callTool(request.name, request.arguments);
+                return await this.callTool(request.name, request.arguments, originalCallTool);
             };
 
             await this.customMcp.processQueryStream(query, onUpdate);
@@ -304,7 +312,7 @@ export class MultiMCPClient {
         try {
             const originalCallTool = this.customMcp.mcp.callTool.bind(this.customMcp.mcp);
             this.customMcp.mcp.callTool = async (request) => {
-                return await this.callTool(request.name, request.arguments);
+                return await this.callTool(request.name, request.arguments, originalCallTool);
             };
 
             await this.customMcp.processQueryStreamWithMessages(messages, onUpdate, onMessagesUpdate);
