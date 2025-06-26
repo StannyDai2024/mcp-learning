@@ -74,6 +74,271 @@ class MCPClient {
     }
 
     /**
+     * 流式处理查询方法（用于实时输出）
+     */
+    async processQueryStream(query, onUpdate) {
+        const messages = [
+            {
+                role: "user",
+                content: query,
+            },
+        ];
+
+        try {
+            // 第一次调用：流式获取LLM响应
+            const response = await this.callModel({
+                model: "qwen-turbo",
+                messages,
+                tools: this.tools,
+                parallel_tool_calls: true,
+                stream: true,  // 启用流式响应
+            });
+
+            let content = '';
+            let toolCalls = [];
+            let finishReason = null;
+
+            // 处理流式响应
+            for await (const chunk of response) {
+                const delta = chunk.choices[0]?.delta;
+                finishReason = chunk.choices[0]?.finish_reason;
+
+                // 处理内容流
+                if (delta?.content) {
+                    content += delta.content;
+                    onUpdate({
+                        type: 'content',
+                        data: content,
+                        phase: 'thinking'
+                    });
+                }
+
+                // 处理工具调用
+                if (delta?.tool_calls) {
+                    toolCalls = this.mergeToolCalls(toolCalls, delta.tool_calls);
+                }
+            }
+
+            // 如果LLM决定调用工具
+            if (toolCalls && toolCalls.length > 0) {
+                onUpdate({
+                    type: 'thinking_complete',
+                    data: { content, toolCalls: toolCalls.map(tc => tc.function.name) },
+                    phase: 'thinking'
+                });
+
+                await this.executeToolsStream(toolCalls, onUpdate, messages, content);
+            } else {
+                // 没有工具调用，直接完成
+                onUpdate({
+                    type: 'complete',
+                    data: { 
+                        content: content,  // 最终内容就是思考内容
+                        toolCalls: [] 
+                    },
+                    phase: 'complete'
+                });
+            }
+
+        } catch (error) {
+            onUpdate({
+                type: 'error',
+                data: { error: error.message },
+                phase: 'error'
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * 合并工具调用增量数据
+     */
+    mergeToolCalls(existing, delta) {
+        const result = [...existing];
+        
+        for (const deltaCall of delta) {
+            const index = deltaCall.index;
+            
+            if (!result[index]) {
+                result[index] = {
+                    id: deltaCall.id,
+                    type: deltaCall.type,
+                    function: {
+                        name: deltaCall.function?.name || '',
+                        arguments: deltaCall.function?.arguments || ''
+                    }
+                };
+            } else {
+                // 合并参数
+                if (deltaCall.function?.arguments) {
+                    result[index].function.arguments += deltaCall.function.arguments;
+                }
+                if (deltaCall.function?.name) {
+                    result[index].function.name = deltaCall.function.name;
+                }
+            }
+        }
+        
+        return result;
+    }
+
+    /**
+     * 流式执行工具调用
+     */
+    async executeToolsStream(toolCalls, onUpdate, messages, initialContent) {
+        // 通知开始工具调用
+        onUpdate({
+            type: 'tool_start',
+            data: { 
+                tools: toolCalls.map(tc => ({
+                    name: tc.function.name,
+                    arguments: JSON.parse(tc.function.arguments || '{}')
+                }))
+            },
+            phase: 'tool_execution'
+        });
+
+        // 执行工具调用
+        const executedToolCalls = await Promise.all(
+            toolCalls.map(async (toolCall, index) => {
+                const functionName = toolCall.function.name;
+                const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
+                
+                // 通知单个工具开始执行
+                onUpdate({
+                    type: 'tool_progress',
+                    data: { 
+                        name: functionName,
+                        arguments: functionArgs,
+                        status: 'executing',
+                        index 
+                    },
+                    phase: 'tool_execution'
+                });
+
+                const startTime = Date.now();
+                
+                try {
+                    const toolResponse = await this.mcp.callTool({
+                        name: functionName,
+                        arguments: functionArgs,
+                    });
+                    
+                    const executionTime = Date.now() - startTime;
+
+                    // 通知单个工具完成
+                    onUpdate({
+                        type: 'tool_progress',
+                        data: { 
+                            name: functionName,
+                            arguments: functionArgs,
+                            status: 'completed',
+                            result: toolResponse,
+                            executionTime,
+                            index 
+                        },
+                        phase: 'tool_execution'
+                    });
+
+                    return {
+                        toolCall,
+                        functionName,
+                        functionArgs,
+                        toolResponse,
+                        executionTime
+                    };
+                } catch (error) {
+                    onUpdate({
+                        type: 'tool_progress',
+                        data: { 
+                            name: functionName,
+                            arguments: functionArgs,
+                            status: 'error',
+                            error: error.message,
+                            index 
+                        },
+                        phase: 'tool_execution'
+                    });
+                    throw error;
+                }
+            })
+        );
+
+        // 构建包含工具调用结果的消息
+        messages.push({
+            role: "assistant",
+            content: null,  // 不包含思考内容，避免重复
+            tool_calls: executedToolCalls.map(({ toolCall, functionName, functionArgs }) => ({
+                id: toolCall.id,
+                type: "function",
+                function: {
+                    name: functionName,
+                    arguments: JSON.stringify(functionArgs),
+                }
+            }))
+        });
+
+        // 添加工具调用结果
+        executedToolCalls.forEach(({ functionName, toolResponse }) => {
+            messages.push({
+                role: "tool",
+                name: functionName,
+                content: JSON.stringify(toolResponse)
+            });
+        });
+
+        // 第二次LLM调用获取最终回答
+        await this.getFinalResponseStream(messages, executedToolCalls, onUpdate);
+    }
+
+    /**
+     * 获取最终回答的流式方法
+     */
+    async getFinalResponseStream(messages, executedToolCalls, onUpdate) {
+        onUpdate({
+            type: 'final_thinking_start',
+            data: {},
+            phase: 'final_response'
+        });
+
+        const response = await this.callModel({
+            model: "qwen-turbo",
+            messages,
+            stream: true
+        });
+
+        let finalContent = '';
+
+        for await (const chunk of response) {
+            const delta = chunk.choices[0]?.delta;
+            
+            if (delta?.content) {
+                finalContent += delta.content;
+                onUpdate({
+                    type: 'final_content',
+                    data: finalContent,
+                    phase: 'final_response'
+                });
+            }
+        }
+
+        // 完成
+        onUpdate({
+            type: 'complete',
+            data: { 
+                finalContent: finalContent,  // 最终回答内容
+                toolCalls: executedToolCalls.map(({ functionName, functionArgs, toolResponse, executionTime }) => ({
+                    name: functionName,
+                    arguments: functionArgs,
+                    result: toolResponse,
+                    executionTime
+                }))
+            },
+            phase: 'complete'
+        });
+    }
+
+    /**
      * 调用大模型
      * 模型会自己感知需要调哪些工具
      * 

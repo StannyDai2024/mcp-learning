@@ -73,6 +73,75 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
+// 流式聊天接口 (Server-Sent Events)
+app.get('/api/chat-stream', async (req, res) => {
+    try {
+        const { message } = req.query;
+        
+        if (!message || typeof message !== 'string') {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Message is required and must be a string' 
+            });
+        }
+
+        if (!mcpClient) {
+            return res.status(500).json({ 
+                success: false, 
+                error: 'MCP Client not initialized' 
+            });
+        }
+
+        // 设置SSE响应头
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': corsOptions.origin,
+            'Access-Control-Allow-Credentials': 'true'
+        });
+
+        console.log(`Processing stream query: ${message}`);
+
+        // 流式更新回调函数
+        const onUpdate = (data) => {
+            try {
+                res.write(`data: ${JSON.stringify(data)}\n\n`);
+            } catch (error) {
+                console.error('Error writing SSE data:', error);
+            }
+        };
+
+        // 客户端断开检测
+        req.on('close', () => {
+            console.log('Client disconnected from stream');
+        });
+
+        try {
+            // 开始流式处理
+            await mcpClient.processQueryStream(message, onUpdate);
+        } catch (error) {
+            console.error('Stream processing error:', error);
+            onUpdate({
+                type: 'error',
+                data: { error: error.message },
+                phase: 'error'
+            });
+        } finally {
+            res.end();
+        }
+
+    } catch (error) {
+        console.error('Stream setup error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ 
+                success: false, 
+                error: error.message 
+            });
+        }
+    }
+});
+
 // 获取可用工具列表
 app.get('/api/tools', (req, res) => {
     try {

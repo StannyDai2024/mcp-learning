@@ -49,7 +49,8 @@ function App() {
     }
   }, [connected]);
 
-  const sendMessage = async (messageText = null) => {
+  // 原始的非流式发送方法（保留作为备用）
+  const sendMessageOld = async (messageText = null) => {
     const messageToSend = String(messageText || input || '');
     // 检查消息是否为空或正在加载
     if (!messageToSend.trim() || loading) return;
@@ -84,6 +85,204 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // 新的流式发送方法
+  const sendMessage = async (messageText = null) => {
+    const messageToSend = String(messageText || input || '');
+    // 检查消息是否为空或正在加载
+    if (!messageToSend.trim() || loading) return;
+
+    const userMessage = { role: 'user', content: messageToSend };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setLoading(true);
+
+    // 添加初始的助手消息框
+    const initialBotMessage = { 
+      role: 'assistant', 
+      content: '',
+      toolCalls: [],
+      phase: 'thinking',
+      streaming: true
+    };
+    setMessages(prev => [...prev, initialBotMessage]);
+
+    try {
+      // 建立SSE连接
+      const eventSource = new EventSource(
+        `${API_BASE}/chat-stream?message=${encodeURIComponent(messageToSend)}`
+      );
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          handleStreamUpdate(data, eventSource);
+        } catch (error) {
+          console.error('Error parsing stream data:', error);
+        }
+      };
+
+      eventSource.onerror = (error) => {
+        console.error('SSE error:', error);
+        
+        // 只有在真正的错误情况下才显示错误消息
+        // 正常的连接关闭不应该显示错误
+        if (eventSource.readyState === EventSource.CLOSED && !loading) {
+          // 连接已正常关闭，不显示错误
+          return;
+        }
+        
+        if (eventSource.readyState === EventSource.CONNECTING) {
+          // 正在重连，不显示错误
+          return;
+        }
+        
+        eventSource.close();
+        setLoading(false);
+        
+        // 只在异常情况下添加错误消息
+        setMessages(prev => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg?.role === 'assistant' && lastMsg?.streaming) {
+            // 更新最后一条流式消息为错误状态
+            return prev.map((msg, index) => 
+              index === prev.length - 1 
+                ? { ...msg, streaming: false, phase: 'error', error: '连接异常，请重试' }
+                : msg
+            );
+          } else {
+            // 添加新的错误消息
+            return [...prev, { 
+              role: 'error', 
+              content: '连接异常，请重试' 
+            }];
+          }
+        });
+      };
+
+    } catch (error) {
+      console.error('Stream setup error:', error);
+      setLoading(false);
+      
+      const errorMessage = { 
+        role: 'error', 
+        content: error.message || '流式连接失败，请检查网络' 
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  };
+
+  // 处理流式更新
+  const handleStreamUpdate = (data, eventSource) => {
+    const { type, data: payload, phase } = data;
+
+    setMessages(prev => {
+      const newMessages = [...prev];
+      const lastMessageIndex = newMessages.length - 1;
+      const lastMessage = newMessages[lastMessageIndex];
+
+      // 确保最后一条消息是助手消息
+      if (lastMessage?.role !== 'assistant') {
+        return newMessages;
+      }
+
+      const updatedMessage = { ...lastMessage };
+
+      switch (type) {
+        case 'content':
+          // 更新思考过程的内容
+          updatedMessage.content = payload;
+          updatedMessage.phase = phase;
+          break;
+
+        case 'thinking_complete':
+          // 思考阶段完成
+          updatedMessage.content = payload.content;
+          updatedMessage.phase = 'tool_execution';
+          updatedMessage.pendingTools = payload.toolCalls;
+          break;
+
+        case 'tool_start':
+          // 工具调用开始
+          updatedMessage.phase = 'tool_execution';
+          updatedMessage.toolCalls = payload.tools.map(tool => ({
+            name: tool.name,
+            arguments: tool.arguments,
+            status: 'pending'
+          }));
+          break;
+
+        case 'tool_progress':
+          // 工具执行进度更新
+          if (updatedMessage.toolCalls) {
+            updatedMessage.toolCalls = updatedMessage.toolCalls.map((tool, index) => {
+              if (index === payload.index) {
+                return {
+                  ...tool,
+                  status: payload.status,
+                  result: payload.result,
+                  executionTime: payload.executionTime,
+                  error: payload.error
+                };
+              }
+              return tool;
+            });
+          }
+          break;
+
+        case 'final_thinking_start':
+          // 开始最终回答
+          updatedMessage.phase = 'final_response';
+          updatedMessage.finalContent = '';
+          break;
+
+        case 'final_content':
+          // 最终回答内容流
+          updatedMessage.finalContent = payload;
+          updatedMessage.phase = 'final_response';
+          break;
+
+        case 'complete':
+          // 完成 - 简化逻辑
+          // 优先使用finalContent，如果没有则使用content
+          if (payload.finalContent) {
+            updatedMessage.finalContent = payload.finalContent;
+          } else if (payload.content) {
+            updatedMessage.content = payload.content;
+          }
+          
+          updatedMessage.toolCalls = payload.toolCalls || [];
+          updatedMessage.phase = 'complete';
+          updatedMessage.streaming = false;
+          
+          // 调试信息
+          console.log('✅ Complete:', {
+            finalContent: payload.finalContent,
+            content: payload.content,
+            toolCalls: payload.toolCalls?.length || 0
+          });
+          
+          // 关闭SSE连接并取消loading状态
+          eventSource?.close();
+          setLoading(false);
+          break;
+
+        case 'error':
+          // 错误处理
+          updatedMessage.phase = 'error';
+          updatedMessage.error = payload.error;
+          updatedMessage.streaming = false;
+          
+          // 关闭SSE连接并取消loading状态
+          eventSource?.close();
+          setLoading(false);
+          break;
+      }
+
+      newMessages[lastMessageIndex] = updatedMessage;
+      return newMessages;
+    });
   };
 
   // 处理示例问题点击
@@ -208,6 +407,7 @@ function App() {
         {tools.length > 0 && (
           <div className="tools">
             📦 可用工具: {tools.map(t => t.function.name).join(', ')}
+            <span className="stream-mode-badge">⚡ 流式模式</span>
           </div>
         )}
       </div>
@@ -280,14 +480,42 @@ function App() {
                  </div>
                  
                  <div className="message-bubble">
-                   {/* 工具调用信息展示 */}
-                   {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
+                   {/* 工具调用实时进度（流式时） */}
+                   {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && msg.streaming && (
+                     <div className="tool-progress">
+                       <div className="tool-progress-header">🔧 AI 正在执行以下工具</div>
+                       {msg.toolCalls.map((tool, index) => (
+                         <div key={index} className={`tool-item ${tool.status}`}>
+                           <span className="tool-name">{tool.name}</span>
+                           <span className={`tool-status ${tool.status}`}>
+                             {tool.status === 'pending' && '⏳ 等待中'}
+                             {tool.status === 'executing' && '⚡ 执行中'}
+                             {tool.status === 'completed' && `✅ 完成 (${tool.executionTime}ms)`}
+                             {tool.status === 'error' && '❌ 错误'}
+                           </span>
+                         </div>
+                       ))}
+                     </div>
+                   )}
+
+                   {/* 工具调用信息展示（完成后） */}
+                   {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && !msg.streaming && (
                      <ToolCallsDisplay toolCalls={msg.toolCalls} />
                    )}
                    
-                   <div className="content">
+                                      <div className="content">
                      {msg.role === 'assistant' ? (
-                       <MarkdownRenderer>{msg.content}</MarkdownRenderer>
+                       <div>
+                         {/* 简化逻辑：优先显示finalContent，否则显示content */}
+                         <MarkdownRenderer>
+                           {msg.finalContent || msg.content || ''}
+                         </MarkdownRenderer>
+                         
+                         {/* 流式光标 */}
+                         {msg.streaming && (
+                           <span className="stream-cursor">▊</span>
+                         )}
+                       </div>
                      ) : (
                        <span className="plain-text">{msg.content}</span>
                      )}
@@ -297,20 +525,6 @@ function App() {
              </div>
            </div>
          ))}
-        
-        {loading && (
-          <div className="message assistant">
-            <div className="message-inner">
-              <div className="message-avatar">🤖</div>
-              <div className="message-content">
-                <div className="message-header">助手</div>
-                <div className="message-bubble">
-                  <div className="loading">正在思考中...</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="bottom-section">

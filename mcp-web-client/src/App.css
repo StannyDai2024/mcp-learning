@@ -106,6 +106,31 @@ body {
   border-radius: var(--radius-md);
   margin: 0 auto;
   max-width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.stream-mode-badge {
+  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+  animation: streamBadgePulse 2s ease-in-out infinite;
+}
+
+@keyframes streamBadgePulse {
+  0%, 100% { 
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+  }
+  50% { 
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+  }
 }
 
 /* ==================== 聊天容器 ==================== */
@@ -417,6 +442,113 @@ body {
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+/* ==================== 流式UI样式 ==================== */
+
+.tool-progress {
+  margin: 12px 0;
+  padding: 12px;
+  background: rgba(243, 244, 246, 0.5);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.tool-progress-header {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.tool-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--primary-bg);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.tool-item:last-child {
+  margin-bottom: 0;
+}
+
+.tool-item.pending {
+  border-left: 3px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.tool-item.executing {
+  border-left: 3px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+  animation: toolExecuting 1s ease-in-out infinite;
+}
+
+.tool-item.completed {
+  border-left: 3px solid #10b981;
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.tool-item.error {
+  border-left: 3px solid #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+@keyframes toolExecuting {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(2px); }
+}
+
+.tool-name {
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.tool-status {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.tool-status.pending {
+  color: #d97706;
+}
+
+.tool-status.executing {
+  color: #2563eb;
+  animation: statusPulse 1s ease-in-out infinite;
+}
+
+.tool-status.completed {
+  color: #059669;
+}
+
+.tool-status.error {
+  color: #dc2626;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 简化后的内容样式 */
+
+.stream-cursor {
+  color: var(--accent-blue);
+  animation: blink 1s infinite;
+  font-weight: bold;
+  margin-left: 2px;
+  display: inline-block;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 
 /* ==================== 工具调用样式 ==================== */
