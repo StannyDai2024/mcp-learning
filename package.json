@@ -1,0 +1,31 @@
+{
+  "name": "mcp-learning",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MCP团建活动规划系统 - 集成高德官方MCP服务",
+  "main": "test-amap-mcp.js",
+  "scripts": {
+    "test": "node test/test-mcp-connection.js",
+    "start:server": "cd mcp-web-server && npm start",
+    "start:client": "cd mcp-web-client && npm start",
+    "start:mcp": "cd mcp-server && npm start"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@amap/amap-maps-mcp-server": "latest",
+    "dotenv": "^16.0.0",
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "amap",
+    "team-building",
+    "ai-assistant"
+  ],
+  "author": "",
+  "license": "MIT"
+}

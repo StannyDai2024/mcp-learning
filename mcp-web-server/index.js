@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { MCPClient } from '../mcp-client/index.js';
+import { MultiMCPClient } from '../mcp-client/multi-mcp-client.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,8 +19,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// 全局单例 MCPClient（简化版，无需多用户支持）
-let mcpClient = null;
+// 全局单例 MultiMCPClient（支持高德+自定义双MCP架构）
+let multiMcpClient = null;
 
 // 🔥 新增：会话管理
 const sessions = new Map(); // sessionId -> messages[]
@@ -57,16 +57,24 @@ function getOrCreateSession(sessionId) {
     return session;
 }
 
-// 初始化 MCP 连接
+// 初始化多MCP连接（高德官方MCP + 自定义MCP）
 async function initMCP() {
     try {
-        mcpClient = new MCPClient();
-        const serverPath = path.join(__dirname, '../mcp-server/index.js');
-        await mcpClient.connectToServer(serverPath);
-        console.log('MCP Client initialized successfully');
+        console.log('🚀 初始化多MCP架构...');
+        multiMcpClient = new MultiMCPClient();
+        await multiMcpClient.initialize();
+        
+        const status = multiMcpClient.getStatus();
+        console.log('✅ 多MCP客户端初始化成功');
+        console.log(`📊 状态摘要:`);
+        console.log(`  - 高德MCP: ${status.amap.connected ? '✅' : '❌'} (${status.amap.toolCount} 工具)`);
+        console.log(`  - 自定义MCP: ${status.custom.connected ? '✅' : '❌'} (${status.custom.toolCount} 工具)`);
+        console.log(`  - 总工具数: ${status.totalTools}`);
+        
     } catch (error) {
-        console.error('Failed to initialize MCP Client:', error);
-        process.exit(1);
+        console.error('❌ 多MCP客户端初始化失败:', error);
+        // 不直接退出，允许降级到智能推荐模式
+        console.warn('⚠️ 将使用智能推荐模式运行');
     }
 }
 
@@ -74,9 +82,16 @@ async function initMCP() {
 const SYSTEM_PROMPT = `你是一个智能助手，特别擅长团建活动规划，同时也能回答各种其他问题。
 
 ## 🌟 重要说明
-你可以使用两套MCP工具：
-1. **高德地图官方MCP工具** - 用于位置和地图相关功能（目前暂未完全集成，先使用描述性回答）
-2. **自定义业务MCP工具** - 用于业务逻辑（如HTML报告生成）
+你现在可以使用两套MCP工具：
+1. **高德地图官方MCP工具** - 用于位置和地图相关功能（工具名前缀：amap_）
+   - amap_geocoding - 地址转坐标
+   - amap_reverse_geocoding - 坐标转地址
+   - amap_poi_search - POI搜索
+   - amap_around_search - 周边搜索
+   - amap_weather - 天气查询
+   等等
+2. **自定义业务MCP工具** - 用于业务逻辑（工具名前缀：custom_）
+   - custom_create_html_report - 生成HTML报告
 
 ## 🎯 团建活动规划专长
 当用户需要团建、聚餐、团队活动等相关帮助时，你的专业流程是：
@@ -90,13 +105,20 @@ const SYSTEM_PROMPT = `你是一个智能助手，特别擅长团建活动规划
 4. **预算范围** - 经济实惠（50-100元）、中等消费（100-200元）、高端消费（200元以上）
 5. **时间安排** - 可选信息
 
-### 当前工具使用策略
-- **位置和餐厅搜索** - 暂时通过智能推荐方式处理
-  - 基于用户提供的位置信息，推荐该区域知名的餐厅
-  - 结合菜系偏好、人数和预算给出具体建议
-  - 提供餐厅的详细信息（地址、特色菜、人均消费等）
-  
-- **create-html-report** - 当用户选定方案后，调用此工具生成最终HTML报告
+### 工具使用策略
+**优先使用高德官方MCP工具获取真实数据：**
+- **amap_poi_search** - 搜索餐厅POI信息
+- **amap_around_search** - 搜索周边餐厅
+- **amap_geocoding** - 地址转坐标（如果用户提供地址）
+- **amap_reverse_geocoding** - 坐标转地址（获取详细位置信息）
+- **amap_weather** - 查询天气信息（为活动提供参考）
+
+**降级策略：** 如果高德工具不可用，则使用智能推荐：
+- 基于内置知识库推荐该区域知名餐厅
+- 提供餐厅的详细信息（地址、特色菜、人均消费等）
+
+**最终报告生成：**
+- **custom_create_html_report** - 用户选定方案后生成HTML报告
 
 ### 方案生成原则
 基于用户需求和区域特点，智能生成3个不同档次的方案：
@@ -123,12 +145,18 @@ const SYSTEM_PROMPT = `你是一个智能助手，特别擅长团建活动规划
 - 当生成最终方案时，说明"接下来为您生成精美的HTML团建规划报告"，然后调用create-html-report工具
 - 对于非团建问题，同样热情专业地回答
 
-## 🔮 未来升级
-随着高德官方MCP服务的完全集成，将能够：
-- 实时获取真实位置信息
-- 搜索真实的周边餐厅数据
-- 提供精确的路线规划
-- 获取实时的营业状态信息`;
+## ✅ 已集成功能
+高德官方MCP服务已完全集成，现在可以：
+- ✅ 实时获取真实位置信息（通过geocoding/reverse_geocoding）
+- ✅ 搜索真实的周边餐厅数据（通过poi_search/around_search）
+- ✅ 获取实时天气信息（通过weather查询）
+- ✅ 地址与坐标互转（支持精确定位）
+
+## 🔮 未来可扩展功能
+- 路线规划和导航
+- 实时营业状态查询
+- 餐厅评分和点评信息
+- 周边交通和停车信息`;
 
 // 构建带系统提示的消息数组
 function buildMessagesWithSystemPrompt(messages) {
@@ -161,10 +189,10 @@ app.post('/api/chat', async (req, res) => {
             });
         }
 
-        if (!mcpClient) {
+        if (!multiMcpClient) {
             return res.status(500).json({ 
                 success: false, 
-                error: 'MCP Client not initialized' 
+                error: 'MultiMCP Client not initialized' 
             });
         }
         
@@ -186,7 +214,7 @@ app.post('/api/chat', async (req, res) => {
             const processMessages = buildMessagesWithSystemPrompt(session.messages);
             
             // 使用会话历史调用MCP处理
-            result = await mcpClient.processQueryWithMessages(processMessages);
+            result = await multiMcpClient.processQueryWithMessages(processMessages);
             
             // 更新会话历史（过滤掉系统消息）
             session.messages = result.messages.filter(msg => msg.role !== "system");
@@ -194,7 +222,7 @@ app.post('/api/chat', async (req, res) => {
             console.log(`💬 会话 ${sessionId} 消息数: ${session.messages.length}`);
         } else {
             // 🔥 单轮对话模式
-            result = await mcpClient.processQueryWithToolInfo(message);
+            result = await multiMcpClient.processQueryWithToolInfo(message);
         }
         
         res.json({ 
@@ -227,10 +255,10 @@ app.get('/api/chat-stream', async (req, res) => {
             });
         }
 
-        if (!mcpClient) {
+        if (!multiMcpClient) {
             return res.status(500).json({ 
                 success: false, 
-                error: 'MCP Client not initialized' 
+                error: 'MultiMCP Client not initialized' 
             });
         }
 
@@ -275,7 +303,7 @@ app.get('/api/chat-stream', async (req, res) => {
                 const processMessages = buildMessagesWithSystemPrompt(session.messages);
                 
                 // 使用会话历史进行流式处理
-                await mcpClient.processQueryStreamWithMessages(processMessages, onUpdate, (updatedMessages) => {
+                await multiMcpClient.processQueryStreamWithMessages(processMessages, onUpdate, (updatedMessages) => {
                     // 回调函数：更新会话历史（过滤掉系统消息）
                     session.messages = updatedMessages.filter(msg => msg.role !== "system");
                     console.log(`💬 流式会话 ${sessionId} 消息数: ${session.messages.length}`);
@@ -283,7 +311,7 @@ app.get('/api/chat-stream', async (req, res) => {
                 
             } else {
                 // 🔥 单轮对话流式处理
-                await mcpClient.processQueryStream(message, onUpdate);
+                await multiMcpClient.processQueryStream(message, onUpdate);
             }
         } catch (error) {
             console.error('Stream processing error:', error);
@@ -365,7 +393,8 @@ app.get('/api/tools', (req, res) => {
     try {
         res.json({
             success: true,
-            tools: mcpClient?.tools || []
+            tools: multiMcpClient?.tools || [],
+            status: multiMcpClient?.getStatus() || null
         });
     } catch (error) {
         res.status(500).json({
@@ -377,10 +406,11 @@ app.get('/api/tools', (req, res) => {
 
 // 健康检查
 app.get('/api/health', (req, res) => {
+    const mcpStatus = multiMcpClient?.getStatus();
     res.json({
         success: true,
         status: 'healthy',
-        mcpConnected: !!mcpClient,
+        mcp: mcpStatus || { initialized: false },
         activeSessions: sessions.size
     });
 });
@@ -398,8 +428,8 @@ process.on('SIGINT', async () => {
     console.log('\nReceived SIGINT, shutting down gracefully...');
     console.log(`清理 ${sessions.size} 个活跃会话...`);
     sessions.clear();
-    if (mcpClient) {
-        await mcpClient.cleanup();
+    if (multiMcpClient) {
+        await multiMcpClient.cleanup();
     }
     process.exit(0);
 }); 
