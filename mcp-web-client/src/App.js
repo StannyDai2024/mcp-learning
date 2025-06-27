@@ -8,6 +8,77 @@ import './App.css';
 
 const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3001/api';
 
+// 🔥 统一的示例问题配置
+const EXAMPLE_QUESTIONS = [
+  {
+    id: 'calculation',
+    icon: '🧮',
+    label: '简单计算',
+    text: '计算 1.4323432 * 1.41445345',
+    showInWelcome: true,
+    showInBottom: true,
+    category: 'basic'
+  },
+  {
+    id: 'geocoding',
+    icon: '📍',
+    label: '地址转坐标',
+    text: "将地址'杭州西湖'转换为经纬度坐标",
+    showInWelcome: true,
+    showInBottom: false,
+    category: 'location'
+  },
+
+  {
+    id: 'weather',
+    icon: '🌤️',
+    label: '天气查询',
+    text: '查询上海的天气情况',
+    showInWelcome: true,
+    showInBottom: true,
+    category: 'weather'
+  },
+
+  {
+    id: 'complex-query',
+    icon: '🗺️',
+    label: '天气和餐厅查询',
+    text: "查询'杭州西湖'今天的天气并且查询周边 2 公里内的最推荐的 3 个餐厅，能显示餐厅图片最好",
+    showInWelcome: true,
+    showInBottom: false,
+    category: 'complex'
+  },
+  {
+    id: 'company-dinner',
+    icon: '👥',
+    label: '公司聚餐规划',
+    text: `
+      🎯 团建规划挑战：为我们设计一个完美的团建方案！
+
+      **团队情况：**
+      - 25 人产品研发团队
+      - 出发地：杭州华为全球培训中心
+      - 时间：下周三晚上
+      - 活动负责人：张三
+      - 联系方式：13800138000
+
+      **规划要求：**
+      ✅ 找到附近10公里内最值得推荐的3家餐厅（不同档次）
+      ✅ 餐厅要求：有特色、环境好、适合团队聚餐
+      ✅ 获取每家餐厅的详细信息：位置、菜系、人均消费、招牌菜、图片
+      ✅ 计算从杭州华为全球培训中心到餐厅的交通路线和时间
+      ✅ 查询下周天气情况，为活动安排提供参考
+      ✅ 生成一份包含多方案对比的专业团建规划报告
+      ✅ 报告要包含：餐厅对比表、路线图、费用预算、活动建议
+
+      让我看看你的多工具协作能力！🚀
+    `,
+    showInWelcome: false,
+    showInBottom: true,
+    category: 'planning'
+  },
+];
+
 // 生成唯一sessionId
 const generateSessionId = () => {
   return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -404,6 +475,26 @@ function App() {
     sendMessage(exampleText);
   };
 
+  // 🔥 统一的示例按钮渲染组件
+  const ExampleQuestions = ({ showLocation, className = 'example-questions' }) => {
+
+    return (
+      <div className={className}>
+        {EXAMPLE_QUESTIONS.map((question) => (
+          <button
+            key={question.id}
+            className={showLocation === 'bottom' ? 'example-btn-bottom' : 'example-btn'}
+            onClick={() => handleExampleClick(question.text)}
+            disabled={loading || !connected}
+            title={question.text}
+          >
+            {question.icon} {question.label}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   // 工具调用展示组件
   const ToolCallsDisplay = ({ toolCalls, messageIndex }) => {
     const isExpanded = toolCallsExpandedState[messageIndex] || false;
@@ -597,64 +688,7 @@ function App() {
           <div className="welcome-message">
             <p>👋 欢迎使用 MCP Chat！</p>
             <p>你可以点击下面的示例问题快速体验：</p>
-            <div className="example-questions">
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("帮我规划一个团建活动，我们有8个人想在北京朝阳区吃川菜")}
-                disabled={loading || !connected}
-              >
-                🍽️ 团建活动规划
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("搜索北京国贸附近的餐厅")}
-                disabled={loading || !connected}
-              >
-                🔍 搜索附近餐厅
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("查询上海的天气情况")}
-                disabled={loading || !connected}
-              >
-                🌤️ 天气查询
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("从北京西站到天安门怎么走？")}
-                disabled={loading || !connected}
-              >
-                🚶 路线导航
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("将地址'北京市朝阳区国贸'转换为经纬度坐标")}
-                disabled={loading || !connected}
-              >
-                📍 地址转坐标
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("搜索广州塔周边2公里内的景点")}
-                disabled={loading || !connected}
-              >
-                🗺️ 周边搜索
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("我们公司在深圳南山区，想组织15人的聚餐，预算每人150元")}
-                disabled={loading || !connected}
-              >
-                👥 公司聚餐规划
-              </button>
-              <button 
-                className="example-btn"
-                onClick={() => handleExampleClick("计算 15 + 27")}
-                disabled={loading || !connected}
-              >
-                🧮 简单计算
-              </button>
-            </div>
+            <ExampleQuestions showLocation="welcome" />
             <p className="tip">💡 或者在下方输入框中输入你的问题</p>
           </div>
         )}
@@ -723,64 +757,10 @@ function App() {
 
       <div className="bottom-section">
         {messages.length > 0 && (
-          <div className="example-questions-bottom">
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("帮我规划一个团建活动，我们有8个人想在北京朝阳区吃川菜")}
-              disabled={loading || !connected}
-            >
-              🍽️ 团建活动规划
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("搜索北京国贸附近的餐厅")}
-              disabled={loading || !connected}
-            >
-              🔍 搜索附近餐厅
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("查询上海的天气情况")}
-              disabled={loading || !connected}
-            >
-              🌤️ 天气查询
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("从北京西站到天安门怎么走？")}
-              disabled={loading || !connected}
-            >
-              🚶 路线导航
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("将地址'北京市朝阳区国贸'转换为经纬度坐标")}
-              disabled={loading || !connected}
-            >
-              📍 地址转坐标
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("搜索广州塔周边2公里内的景点")}
-              disabled={loading || !connected}
-            >
-              🗺️ 周边搜索
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("我们公司在深圳南山区，想组织15人的聚餐，预算每人150元")}
-              disabled={loading || !connected}
-            >
-              👥 公司聚餐规划
-            </button>
-            <button 
-              className="example-btn-bottom"
-              onClick={() => handleExampleClick("计算 15 + 27")}
-              disabled={loading || !connected}
-            >
-              🧮 简单计算
-            </button>
-          </div>
+          <ExampleQuestions 
+            showLocation="bottom" 
+            className="example-questions-bottom"
+          />
         )}
         
         <div className="input-container">

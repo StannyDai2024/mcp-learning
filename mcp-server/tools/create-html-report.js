@@ -5,64 +5,90 @@ import path from 'path';
 export default function createHtmlReport() {
     return {
         name: "create_html_report",
-        description: "生成精美的HTML格式团建规划报告",
+        description: "生成精美的HTML格式团建规划报告，支持多餐厅对比、路线规划、天气预报等功能",
         schema: {
-            selectedPlan: z.object({
-                id: z.string(),
-                title: z.string(),
-                strategy: z.string(),
-                restaurant: z.object({
-                    name: z.string(),
-                    address: z.string(),
-                    phone: z.string(),
-                    rating: z.number(),
-                    averagePrice: z.number(),
-                    specialDishes: z.array(z.string()),
-                    features: z.array(z.string())
-                }),
-                timeline: z.array(z.string()),
-                costs: z.object({
-                    perPerson: z.number(),
-                    total: z.number(),
-                    breakdown: z.array(z.object({
-                        item: z.string(),
-                        amount: z.number()
-                    }))
-                }),
-                highlights: z.array(z.string()),
-                pros: z.array(z.string()),
-                cons: z.array(z.string())
-            }).describe("用户选定的团建方案"),
-            
             eventDetails: z.object({
                 eventName: z.string().optional().default("团队建设聚餐活动"),
                 eventDate: z.string().optional().default("待定"),
                 organizer: z.string().optional().default("团队负责人"),
-                contact: z.string().optional().default("待补充")
+                contact: z.string().optional().default("待补充"),
+                participantCount: z.number().optional().default(20),
+                location: z.object({
+                    name: z.string(),
+                    address: z.string(),
+                    coordinates: z.string().optional()
+                })
             }).describe("活动基本信息"),
             
-            location: z.object({
+            restaurants: z.array(z.object({
+                id: z.string().optional(),
+                name: z.string(),
                 address: z.string(),
-                city: z.string(),
-                district: z.string()
-            }).describe("出发地点信息")
+                phone: z.string().optional(),
+                rating: z.number().optional(),
+                averagePrice: z.number(),
+                cuisine: z.string().optional(),
+                specialDishes: z.array(z.string()).optional(),
+                features: z.array(z.string()).optional(),
+                businessHours: z.string().optional(),
+                photos: z.array(z.string()).optional(),
+                transportation: z.object({
+                    walkingTime: z.string().optional(),
+                    walkingDistance: z.string().optional(),
+                    drivingTime: z.string().optional(),
+                    route: z.string().optional()
+                }).optional()
+            })).describe("候选餐厅列表"),
+            
+            weather: z.object({
+                date: z.string(),
+                dayWeather: z.string(),
+                nightWeather: z.string(),
+                dayTemp: z.string(),
+                nightTemp: z.string(),
+                wind: z.string(),
+                advice: z.string().optional()
+            }).optional().describe("天气信息"),
+            
+            schedule: z.array(z.object({
+                time: z.string(),
+                activity: z.string(),
+                note: z.string().optional()
+            })).optional().describe("活动时间安排"),
+            
+            budget: z.object({
+                totalParticipants: z.number(),
+                restaurantOptions: z.array(z.object({
+                    restaurantName: z.string(),
+                    pricePerPerson: z.number(),
+                    totalCost: z.number(),
+                    costBreakdown: z.array(z.object({
+                        item: z.string(),
+                        amount: z.number()
+                    })).optional()
+                })),
+                recommendations: z.string().optional()
+            }).optional().describe("预算分析"),
+            
+            suggestions: z.object({
+                weatherTips: z.array(z.string()).optional(),
+                teamActivities: z.array(z.string()).optional(),
+                diningTips: z.array(z.string()).optional(),
+                bookingAdvice: z.array(z.string()).optional()
+            }).optional().describe("活动建议")
         },
-        handler: async ({ selectedPlan, eventDetails, location }) => {
+        handler: async ({ eventDetails, restaurants, weather, schedule, budget, suggestions }) => {
             try {
-                // 生成当前时间戳作为文件名
                 const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
                 const filename = `团建规划报告_${timestamp}.html`;
                 
-                // 计算总费用
-                const totalCost = selectedPlan.costs.breakdown.reduce((sum, item) => sum + item.amount, 0);
-                
-                // HTML模板
                 const htmlContent = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${eventDetails.eventName} - 团建规划报告</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -71,272 +97,485 @@ export default function createHtmlReport() {
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             line-height: 1.6;
             color: #333;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
         }
         
         .container {
-            max-width: 900px;
+            max-width: 1200px;
             margin: 0 auto;
             background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
+            min-height: 100vh;
+            position: relative;
         }
         
         .header {
             background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
             color: white;
-            padding: 40px;
+            padding: 60px 40px;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(255,255,255,0.05) 10px,
+                rgba(255,255,255,0.05) 20px
+            );
+            animation: slide 20s linear infinite;
+        }
+        
+        @keyframes slide {
+            0% { transform: translateX(-50px); }
+            100% { transform: translateX(50px); }
         }
         
         .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            font-weight: 700;
+            font-size: 3em;
+            margin-bottom: 15px;
+            font-weight: 800;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 1;
         }
         
         .header p {
-            font-size: 1.2em;
-            opacity: 0.9;
+            font-size: 1.3em;
+            opacity: 0.95;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .overview-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            padding: 40px;
+            margin: -30px 40px 0;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .overview-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border: 1px solid #f0f0f0;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .overview-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        }
+        
+        .overview-card i {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .overview-card h3 {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .overview-card .value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2c3e50;
         }
         
         .content {
-            padding: 40px;
+            padding: 60px 40px;
         }
         
         .section {
-            margin-bottom: 40px;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            margin-bottom: 60px;
         }
         
         .section-title {
-            font-size: 1.8em;
-            margin-bottom: 20px;
+            font-size: 2.2em;
+            margin-bottom: 30px;
             color: #2c3e50;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 15px;
+            padding-bottom: 15px;
+            border-bottom: 3px solid #3498db;
         }
         
-        .plan-overview {
-            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+        .restaurant-comparison {
+            overflow-x: auto;
+            margin: 30px 0;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        
+        .restaurant-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            min-width: 800px;
+        }
+        
+        .restaurant-table th {
+            background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
             color: white;
-        }
-        
-        .plan-overview h2 {
-            color: white;
-        }
-        
-        .restaurant-info {
-            background: #f8f9fa;
-            border-left: 5px solid #00b894;
-        }
-        
-        .timeline {
-            background: #fff3cd;
-            border-left: 5px solid #ffc107;
-        }
-        
-        .costs {
-            background: #d1ecf1;
-            border-left: 5px solid #17a2b8;
-        }
-        
-        .notes {
-            background: #f8d7da;
-            border-left: 5px solid #dc3545;
-        }
-        
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        
-        .info-card {
-            background: rgba(255,255,255,0.2);
-            padding: 20px;
-            border-radius: 10px;
-            backdrop-filter: blur(10px);
-        }
-        
-        .info-card h3 {
-            margin-bottom: 10px;
-            font-size: 1.2em;
-        }
-        
-        .restaurant-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            margin-top: 20px;
-        }
-        
-        .detail-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 15px;
+            padding: 20px 15px;
+            text-align: left;
+            font-weight: 600;
             font-size: 1.1em;
         }
         
-        .icon {
-            font-size: 1.2em;
-            width: 25px;
+        .restaurant-table th:first-child {
+            border-top-left-radius: 15px;
         }
         
-        .timeline-list {
-            list-style: none;
-            position: relative;
+        .restaurant-table th:last-child {
+            border-top-right-radius: 15px;
         }
         
-        .timeline-list li {
-            padding: 15px 0 15px 40px;
-            position: relative;
-            border-left: 2px solid #ffc107;
+        .restaurant-table td {
+            padding: 18px 15px;
+            border-bottom: 1px solid #ecf0f1;
+            vertical-align: top;
         }
         
-        .timeline-list li:before {
-            content: '';
-            position: absolute;
-            left: -6px;
-            top: 20px;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #ffc107;
+        .restaurant-table tr:hover {
+            background: #f8f9fa;
         }
         
-        .cost-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
+        .restaurant-table tr:last-child td:first-child {
+            border-bottom-left-radius: 15px;
         }
         
-        .cost-table th,
-        .cost-table td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
+        .restaurant-table tr:last-child td:last-child {
+            border-bottom-right-radius: 15px;
         }
         
-        .cost-table th {
-            background: #17a2b8;
-            color: white;
-            font-weight: 600;
+        .restaurant-name {
+            font-weight: bold;
+            color: #e74c3c;
+            font-size: 1.1em;
         }
         
-        .cost-table .total {
-            background: #e9ecef;
+        .rating {
+            color: #f39c12;
+            font-weight: bold;
+        }
+        
+        .price {
+            color: #27ae60;
             font-weight: bold;
             font-size: 1.1em;
         }
         
-        .highlight-list {
-            list-style: none;
-            margin-top: 15px;
+        .route-info {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #3498db;
         }
         
-        .highlight-list li {
-            padding: 8px 0;
-            padding-left: 25px;
+        .route-step {
+            margin: 8px 0;
+            padding-left: 20px;
             position: relative;
         }
         
-        .highlight-list.pros li:before {
-            content: '✅';
+        .route-step::before {
+            content: '→';
             position: absolute;
             left: 0;
+            color: #3498db;
+            font-weight: bold;
         }
         
-        .highlight-list.cons li:before {
-            content: '⚠️';
-            position: absolute;
-            left: 0;
-        }
-        
-        .highlight-list.features li:before {
-            content: '🎯';
-            position: absolute;
-            left: 0;
-        }
-        
-        .contact-info {
-            background: #e8f5e8;
-            border-left: 5px solid #28a745;
-            padding: 20px;
-            border-radius: 10px;
-            margin-top: 30px;
-        }
-        
-        .footer {
-            text-align: center;
-            padding: 30px;
-            background: #f8f9fa;
-            color: #6c757d;
-            font-style: italic;
-        }
-        
-        @media (max-width: 768px) {
-            .restaurant-details {
-                grid-template-columns: 1fr;
-            }
-            
-            .header h1 {
-                font-size: 2em;
-            }
-            
-            .content {
-                padding: 20px;
-            }
-            
-            .section {
-                padding: 20px;
-            }
-        }
-        
-        .print-btn {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            background: #007bff;
+        .weather-card {
+            background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
             color: white;
-            border: none;
-            border-radius: 50px;
-            padding: 15px 25px;
-            font-size: 16px;
-            cursor: pointer;
-            box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 30px 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: center;
+        }
+        
+        .weather-main {
+            text-align: center;
+        }
+        
+        .weather-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .weather-temp {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .weather-desc {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .weather-details {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .weather-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+        }
+        
+        .weather-item i {
+            width: 20px;
+            text-align: center;
+        }
+        
+        .timeline {
+            position: relative;
+            margin: 30px 0;
+        }
+        
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 30px;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(to bottom, #3498db, #2980b9);
+            border-radius: 2px;
+        }
+        
+        .timeline-item {
+            position: relative;
+            margin: 30px 0;
+            padding-left: 80px;
+        }
+        
+        .timeline-time {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 60px;
+            height: 60px;
+            background: #3498db;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.3);
+        }
+        
+        .timeline-content {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            border: 1px solid #ecf0f1;
+        }
+        
+        .timeline-content h4 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+        
+        .timeline-content p {
+            color: #7f8c8d;
+            line-height: 1.6;
+        }
+        
+        .budget-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 20px;
+            margin: 30px 0;
+        }
+        
+        .budget-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-top: 20px;
+        }
+        
+        .budget-option {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+            border: 2px solid transparent;
             transition: all 0.3s ease;
         }
         
-        .print-btn:hover {
+        .budget-option:hover {
+            border-color: #3498db;
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0,123,255,0.4);
+        }
+        
+        .budget-option.recommended {
+            border-color: #27ae60;
+            background: linear-gradient(135deg, #d5f4e6 0%, #ffffff 100%);
+        }
+        
+        .budget-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        
+        .budget-restaurant {
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+        
+        .budget-total {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        
+        .suggestions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 25px;
+            margin: 30px 0;
+        }
+        
+        .suggestion-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+            border-left: 4px solid #3498db;
+        }
+        
+        .suggestion-card.weather {
+            border-left-color: #f39c12;
+        }
+        
+        .suggestion-card.dining {
+            border-left-color: #e74c3c;
+        }
+        
+        .suggestion-card.booking {
+            border-left-color: #27ae60;
+        }
+        
+        .suggestion-title {
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #2c3e50;
+        }
+        
+        .suggestion-list {
+            list-style: none;
+        }
+        
+        .suggestion-list li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            color: #555;
+            line-height: 1.5;
+        }
+        
+        .suggestion-list li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #27ae60;
+            font-weight: bold;
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                padding: 40px 20px;
+            }
+            
+            .header h1 {
+                font-size: 2.2em;
+            }
+            
+            .overview-cards {
+                grid-template-columns: 1fr;
+                padding: 20px;
+                margin: -20px 20px 0;
+            }
+            
+            .content {
+                padding: 40px 20px;
+            }
+            
+            .section-title {
+                font-size: 1.8em;
+            }
+            
+            .weather-card {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+            
+            .budget-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .suggestions-grid {
+                grid-template-columns: 1fr;
+            }
         }
         
         @media print {
-            .print-btn {
-                display: none;
-            }
-            
             body {
                 background: white;
-                padding: 0;
             }
             
             .container {
                 box-shadow: none;
-                border-radius: 0;
+            }
+            
+            .header::before {
+                display: none;
             }
         }
     </style>
@@ -344,188 +583,293 @@ export default function createHtmlReport() {
 <body>
     <div class="container">
         <div class="header">
-            <h1>🎉 ${eventDetails.eventName}</h1>
+            <h1><i class="fas fa-users"></i> ${eventDetails.eventName}</h1>
             <p>精心策划的团建活动方案</p>
         </div>
         
+        <div class="overview-cards">
+            <div class="overview-card">
+                <i class="fas fa-calendar-alt" style="color: #3498db;"></i>
+                <h3>活动时间</h3>
+                <div class="value">${eventDetails.eventDate}</div>
+            </div>
+            <div class="overview-card">
+                <i class="fas fa-users" style="color: #e74c3c;"></i>
+                <h3>参与人数</h3>
+                <div class="value">${eventDetails.participantCount}人</div>
+            </div>
+            <div class="overview-card">
+                <i class="fas fa-map-marker-alt" style="color: #27ae60;"></i>
+                <h3>出发地点</h3>
+                <div class="value">${eventDetails.location.name}</div>
+            </div>
+            <div class="overview-card">
+                <i class="fas fa-user-tie" style="color: #f39c12;"></i>
+                <h3>组织者</h3>
+                <div class="value">${eventDetails.organizer}</div>
+            </div>
+        </div>
+
         <div class="content">
-            <!-- 方案概览 -->
-            <div class="section plan-overview">
-                <h2 class="section-title">📋 ${selectedPlan.title}</h2>
-                <p style="font-size: 1.2em; margin-bottom: 20px;">${selectedPlan.strategy}</p>
+            <div class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-utensils"></i>
+                    餐厅推荐方案
+                </h2>
                 
-                <div class="info-grid">
-                    <div class="info-card">
-                        <h3>活动日期</h3>
-                        <p>${eventDetails.eventDate}</p>
-                    </div>
-                    <div class="info-card">
-                        <h3>参与人数</h3>
-                        <p>${selectedPlan.costs.total / selectedPlan.costs.perPerson}人</p>
-                    </div>
-                    <div class="info-card">
-                        <h3>预算总计</h3>
-                        <p>¥${totalCost.toLocaleString()}</p>
-                    </div>
-                    <div class="info-card">
-                        <h3>人均费用</h3>
-                        <p>¥${Math.round(totalCost / (selectedPlan.costs.total / selectedPlan.costs.perPerson))}</p>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- 餐厅信息 -->
-            <div class="section restaurant-info">
-                <h2 class="section-title">🍽️ 目标餐厅</h2>
-                <h3 style="font-size: 1.5em; color: #00b894; margin-bottom: 20px;">${selectedPlan.restaurant.name}</h3>
-                
-                <div class="restaurant-details">
-                    <div>
-                        <div class="detail-item">
-                            <span class="icon">📍</span>
-                            <span>${selectedPlan.restaurant.address}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="icon">📞</span>
-                            <span>${selectedPlan.restaurant.phone}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="icon">⭐</span>
-                            <span>${selectedPlan.restaurant.rating}/5.0 分</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="icon">💰</span>
-                            <span>人均 ¥${selectedPlan.restaurant.averagePrice}</span>
-                        </div>
-                    </div>
-                    <div>
-                        <h4>🎯 活动亮点</h4>
-                        <ul class="highlight-list features">
-                            ${selectedPlan.highlights.map(highlight => `<li>${highlight}</li>`).join('')}
-                        </ul>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 25px;">
-                    <h4>🍜 招牌菜品</h4>
-                    <p style="margin-top: 10px; font-size: 1.1em; color: #555;">
-                        ${selectedPlan.restaurant.specialDishes.join('、')}
-                    </p>
-                </div>
-            </div>
-            
-            <!-- 时间安排 -->
-            <div class="section timeline">
-                <h2 class="section-title">⏰ 活动时间安排</h2>
-                <ul class="timeline-list">
-                    ${selectedPlan.timeline.map(time => `<li>${time}</li>`).join('')}
-                </ul>
-            </div>
-            
-            <!-- 费用明细 -->
-            <div class="section costs">
-                <h2 class="section-title">💰 费用预算明细</h2>
-                <table class="cost-table">
-                    <thead>
-                        <tr>
-                            <th>项目</th>
-                            <th>金额</th>
-                            <th>说明</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${selectedPlan.costs.breakdown.map(item => `
+                <div class="restaurant-comparison">
+                    <table class="restaurant-table">
+                        <thead>
                             <tr>
-                                <td>${item.item}</td>
-                                <td>¥${item.amount.toLocaleString()}</td>
-                                <td>${item.item === '餐费' ? `人均¥${selectedPlan.costs.perPerson}` : '预估费用'}</td>
+                                <th>餐厅名称</th>
+                                <th>地址</th>
+                                <th>人均消费</th>
+                                <th>特色菜</th>
+                                <th>环境评分</th>
+                                <th>交通建议</th>
                             </tr>
-                        `).join('')}
-                        <tr class="total">
-                            <td>总计</td>
-                            <td>¥${totalCost.toLocaleString()}</td>
-                            <td>所有费用合计</td>
-                        </tr>
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            ${restaurants.map(restaurant => `
+                                <tr>
+                                    <td class="restaurant-name">${restaurant.name}</td>
+                                    <td>${restaurant.address}</td>
+                                    <td class="price">¥${restaurant.averagePrice}</td>
+                                    <td>${restaurant.specialDishes ? restaurant.specialDishes.join('、') : '暂无信息'}</td>
+                                    <td class="rating">${restaurant.rating ? `⭐`.repeat(Math.floor(restaurant.rating)) + '☆'.repeat(5-Math.floor(restaurant.rating)) + ` (${restaurant.rating})` : '暂无评分'}</td>
+                                    <td>${restaurant.transportation ? `${restaurant.transportation.walkingTime || '步行可达'}` : '交通便利'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            
-            <!-- 注意事项 -->
-            <div class="section notes">
-                <h2 class="section-title">📝 注意事项</h2>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
-                    <div>
-                        <h4 style="color: #28a745; margin-bottom: 15px;">✅ 方案优势</h4>
-                        <ul class="highlight-list pros">
-                            ${selectedPlan.pros.map(pro => `<li>${pro}</li>`).join('')}
-                        </ul>
+
+            ${weather ? `
+            <div class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-cloud-sun"></i>
+                    天气情况
+                </h2>
+                
+                <div class="weather-card">
+                    <div class="weather-main">
+                        <i class="fas fa-cloud-rain weather-icon"></i>
+                        <div class="weather-temp">${weather.dayTemp}</div>
+                        <div class="weather-desc">${weather.dayWeather}</div>
                     </div>
-                    <div>
-                        <h4 style="color: #dc3545; margin-bottom: 15px;">⚠️ 注意事项</h4>
-                        <ul class="highlight-list cons">
-                            ${selectedPlan.cons.map(con => `<li>${con}</li>`).join('')}
-                        </ul>
+                    <div class="weather-details">
+                        <div class="weather-item">
+                            <i class="fas fa-thermometer-half"></i>
+                            <span>白天：${weather.dayWeather} ${weather.dayTemp}</span>
+                        </div>
+                        <div class="weather-item">
+                            <i class="fas fa-moon"></i>
+                            <span>夜晚：${weather.nightWeather} ${weather.nightTemp}</span>
+                        </div>
+                        <div class="weather-item">
+                            <i class="fas fa-wind"></i>
+                            <span>风力：${weather.wind}</span>
+                        </div>
+                        ${weather.advice ? `
+                        <div class="weather-item">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span>${weather.advice}</span>
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
             </div>
-            
-            <!-- 联系信息 -->
-            <div class="contact-info">
-                <h3 style="margin-bottom: 15px;">📱 联系信息</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
-                    <div>
-                        <strong>活动组织者：</strong><br>
-                        ${eventDetails.organizer}
+            ` : ''}
+
+            ${schedule && schedule.length > 0 ? `
+            <div class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-clock"></i>
+                    时间安排
+                </h2>
+                
+                <div class="timeline">
+                    ${schedule.map((item, index) => `
+                        <div class="timeline-item">
+                            <div class="timeline-time">${item.time}</div>
+                            <div class="timeline-content">
+                                <h4>${item.activity}</h4>
+                                ${item.note ? `<p>${item.note}</p>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+
+            ${budget ? `
+            <div class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-calculator"></i>
+                    费用预算
+                </h2>
+                
+                <div class="budget-section">
+                    <div class="budget-grid">
+                        ${budget.restaurantOptions.map((option, index) => `
+                            <div class="budget-option ${index === 0 ? 'recommended' : ''}">
+                                <div class="budget-header">
+                                    <span class="budget-restaurant">${option.restaurantName}</span>
+                                    <span class="budget-total">¥${option.totalCost.toLocaleString()}</span>
+                                </div>
+                                <p><strong>人均：</strong>¥${option.pricePerPerson}</p>
+                                <p><strong>总计：</strong>${budget.totalParticipants}人 × ¥${option.pricePerPerson} = ¥${option.totalCost.toLocaleString()}</p>
+                                ${index === 0 ? '<p style="color: #27ae60; font-weight: bold; margin-top: 10px;">💡 推荐方案</p>' : ''}
+                            </div>
+                        `).join('')}
                     </div>
-                    <div>
-                        <strong>联系方式：</strong><br>
-                        ${eventDetails.contact}
+                    ${budget.recommendations ? `<p style="margin-top: 20px; font-style: italic; color: #666;"><i class="fas fa-lightbulb"></i> ${budget.recommendations}</p>` : ''}
+                </div>
+            </div>
+            ` : ''}
+
+            ${suggestions ? `
+            <div class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-lightbulb"></i>
+                    活动建议
+                </h2>
+                
+                <div class="suggestions-grid">
+                    ${suggestions.weatherTips && suggestions.weatherTips.length > 0 ? `
+                    <div class="suggestion-card weather">
+                        <div class="suggestion-title">
+                            <i class="fas fa-umbrella"></i>
+                            天气应对
+                        </div>
+                        <ul class="suggestion-list">
+                            ${suggestions.weatherTips.map(tip => `<li>${tip}</li>`).join('')}
+                        </ul>
                     </div>
-                    <div>
-                        <strong>出发地点：</strong><br>
-                        ${location.address}
+                    ` : ''}
+                    
+                    ${suggestions.teamActivities && suggestions.teamActivities.length > 0 ? `
+                    <div class="suggestion-card">
+                        <div class="suggestion-title">
+                            <i class="fas fa-users"></i>
+                            团队互动
+                        </div>
+                        <ul class="suggestion-list">
+                            ${suggestions.teamActivities.map(activity => `<li>${activity}</li>`).join('')}
+                        </ul>
                     </div>
-                    <div>
-                        <strong>餐厅电话：</strong><br>
-                        ${selectedPlan.restaurant.phone}
+                    ` : ''}
+                    
+                    ${suggestions.diningTips && suggestions.diningTips.length > 0 ? `
+                    <div class="suggestion-card dining">
+                        <div class="suggestion-title">
+                            <i class="fas fa-utensils"></i>
+                            餐饮选择
+                        </div>
+                        <ul class="suggestion-list">
+                            ${suggestions.diningTips.map(tip => `<li>${tip}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                    
+                    ${suggestions.bookingAdvice && suggestions.bookingAdvice.length > 0 ? `
+                    <div class="suggestion-card booking">
+                        <div class="suggestion-title">
+                            <i class="fas fa-phone"></i>
+                            提前预订
+                        </div>
+                        <ul class="suggestion-list">
+                            ${suggestions.bookingAdvice.map(advice => `<li>${advice}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+            ` : ''}
+
+            <div class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-address-book"></i>
+                    联系方式
+                </h2>
+                
+                <div style="background: #f8f9fa; padding: 30px; border-radius: 15px; margin-top: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 25px;">
+                        <div>
+                            <h4 style="color: #2c3e50; margin-bottom: 10px;"><i class="fas fa-user-tie"></i> 活动组织者</h4>
+                            <p style="font-size: 1.1em;">${eventDetails.organizer}</p>
+                            <p style="color: #666;">${eventDetails.contact}</p>
+                        </div>
+                        <div>
+                            <h4 style="color: #2c3e50; margin-bottom: 10px;"><i class="fas fa-map-marker-alt"></i> 出发地点</h4>
+                            <p style="font-size: 1.1em;">${eventDetails.location.name}</p>
+                            <p style="color: #666;">${eventDetails.location.address}</p>
+                        </div>
+                        ${restaurants.length > 0 && restaurants[0].phone ? `
+                        <div>
+                            <h4 style="color: #2c3e50; margin-bottom: 10px;"><i class="fas fa-phone"></i> 餐厅电话</h4>
+                            ${restaurants.map(r => r.phone ? `<p>${r.name}: ${r.phone}</p>` : '').join('')}
+                        </div>
+                        ` : ''}
                     </div>
                 </div>
             </div>
         </div>
-        
-        <div class="footer">
-            <p>本报告由 MCP 团建规划系统自动生成 | 生成时间：${new Date().toLocaleString('zh-CN')}</p>
+
+        <div style="background: #2c3e50; color: white; text-align: center; padding: 30px;">
+            <p style="font-size: 1.1em;">
+                <i class="fas fa-magic"></i> 
+                本报告由 MCP 团建规划系统自动生成 | 生成时间：${new Date().toLocaleString('zh-CN')}
+            </p>
+            <p style="margin-top: 10px; opacity: 0.8;">
+                祝您的团队建设活动圆满成功！
+            </p>
         </div>
     </div>
-    
-    <button class="print-btn" onclick="window.print()">🖨️ 打印报告</button>
-    
+
     <script>
-        // 添加一些交互效果
         document.addEventListener('DOMContentLoaded', function() {
-            // 平滑滚动
             document.querySelectorAll('a[href^="#"]').forEach(anchor => {
                 anchor.addEventListener('click', function (e) {
                     e.preventDefault();
-                    document.querySelector(this.getAttribute('href')).scrollIntoView({
-                        behavior: 'smooth'
-                    });
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth' });
+                    }
                 });
             });
             
-            // 点击费用表行高亮
-            document.querySelectorAll('.cost-table tr').forEach(row => {
+            const tableRows = document.querySelectorAll('.restaurant-table tbody tr');
+            tableRows.forEach(row => {
                 row.addEventListener('click', function() {
-                    document.querySelectorAll('.cost-table tr').forEach(r => r.style.background = '');
-                    this.style.background = '#f0f8ff';
+                    tableRows.forEach(r => r.style.background = '');
+                    this.style.background = '#e3f2fd';
                 });
             });
+            
+            const budgetOptions = document.querySelectorAll('.budget-option');
+            budgetOptions.forEach(option => {
+                option.addEventListener('click', function() {
+                    budgetOptions.forEach(o => o.classList.remove('selected'));
+                    this.classList.add('selected');
+                });
+            });
+            
+            const style = document.createElement('style');
+            style.textContent = \`
+                .budget-option.selected {
+                    border-color: #3498db !important;
+                    background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%) !important;
+                    transform: scale(1.02);
+                }
+            \`;
+            document.head.appendChild(style);
         });
     </script>
 </body>
 </html>`;
 
-                // 保存HTML文件
                 const filePath = path.join(process.cwd(), filename);
                 await fs.writeFile(filePath, htmlContent, 'utf8');
                 
@@ -541,26 +885,29 @@ export default function createHtmlReport() {
 - 文件大小：${Math.round(htmlContent.length / 1024)} KB
 
 📋 报告内容包含：
-✅ 活动概览和基本信息
-✅ 餐厅详细信息和特色
-✅ 完整的时间安排表
-✅ 详细的费用预算明细
-✅ 方案优势和注意事项
-✅ 完整的联系信息
+✅ 现代化活动概览卡片
+✅ 餐厅对比表格（支持多餐厅）
+✅ 实时天气信息展示
+✅ 可视化时间安排时间线
+✅ 详细费用预算对比
+✅ 智能活动建议分类
+✅ 完整联系信息汇总
 
-🌐 使用方式：
-1. 在浏览器中打开 ${filename}
-2. 可以直接打印或保存为PDF
-3. 支持手机和电脑查看
-4. 可以分享给团队成员
+🌟 报告特色：
+- 🎨 现代化UI设计，视觉冲击力强
+- 📱 完全响应式，支持所有设备
+- 🎯 FontAwesome图标，专业美观
+- ⚡ 交互式元素，用户体验佳
+- 🖨️ 打印友好，一键输出PDF
+- 🎭 CSS动画效果，动态展示
 
-💡 报告特色：
-- 现代化设计，视觉效果佳
-- 响应式布局，适配各种设备
-- 包含打印友好样式
-- 交互式元素，提升用户体验
+💡 使用建议：
+1. 在现代浏览器中打开效果最佳
+2. 支持直接分享链接或PDF导出
+3. 可以嵌入企业内网系统
+4. 适合投影展示和手机查看
 
-团建规划完成！请在浏览器中查看您的专属团建报告。`
+团建规划完成！请在浏览器中查看您的专业级团建报告。`
                         }
                     ],
                     filePath: filePath,

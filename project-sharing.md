@@ -1,14 +1,14 @@
-# MCP团建规划系统 - 项目分享
+# 基于 MCP 构建的大模型应用 - 项目分享
 
 ## 📋 项目概述
 
-**MCP团建规划系统**是一个基于Model Context Protocol（模型上下文协议）的智能团建活动规划演示项目。该项目展示了如何构建复杂的AI工具调用系统，实现从需求收集到方案生成的完整团建规划流程。
+本项目是一个基于Model Context Protocol（模型上下文协议）的智能团建活动规划演示项目。该项目展示了如何构建复杂的 AI 工具调用系统，实现从需求收集到方案生成的完整团建规划流程。
 
 ### 🎯 项目目标
-- **技术演示**：展示MCP协议的实际应用能力
-- **工具调用**：演示复杂的多轮工具调用场景
-- **架构设计**：探索多MCP服务集成的最佳实践
-- **业务价值**：提供实用的团建规划解决方案
+- **技术演示**：展示 MCP 协议的实际应用能力
+- **工具调用**：演示复杂的工具调用场景
+- **架构设计**：探索多 MCP 服务集成的实践
+- **业务价值**：提供智能体应用从快速搭建到部署的解决方案，深入探索内部原理
 
 ---
 
@@ -18,25 +18,24 @@
 
 ```mermaid
 graph TB
-    subgraph "前端层"
-        A[React Web Client<br/>mcp-web-client]
+    subgraph "前端层_React"
+        A[mcp-web-client]
     end
     
-    subgraph "API层"
-        B[Express Web Server<br/>mcp-web-server]
-    end
+    subgraph "&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp&nbsp &nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp &nbsp&nbsp  &nbsp&nbsp  &nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbsp&nbsp  &nbspAPI层_Express "
+        B[mcp-web-server]
     
-    subgraph "MCP客户端层"
-        C[多MCP客户端管理器<br/>MultiMCPClient]
-    end
+    
+    C[多 MCP 服务管理器<br/>MultiMCPClient]
     
     subgraph "MCP服务层"
         D[高德官方MCP<br/>12个地图工具]
         E[自定义MCP服务器<br/>4个业务工具]
     end
+    end
     
     subgraph "外部服务"
-        F[OpenAI GPT-4]
+        F[通义 qwen-plus]
         G[高德地图API]
     end
     
@@ -82,7 +81,7 @@ graph TB
 
 #### 4. **MCP服务层**
 - **高德官方MCP**: 12个地图相关工具
-- **自定义MCP服务器**: 4个业务逻辑工具
+- **自定义MCP服务器(mcp-server)**: 4个业务逻辑工具
 
 ---
 
@@ -98,7 +97,7 @@ sequenceDiagram
     participant M as 多MCP管理器
     participant A as 高德MCP
     participant C as 自定义MCP
-    participant AI as OpenAI
+    participant AI as LLM
     
     U->>W: 发起团建规划请求
     W->>S: POST /api/chat

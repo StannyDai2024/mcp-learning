@@ -52,7 +52,7 @@ export class MultiMCPClient {
             console.log('🗺️ 正在连接高德官方MCP服务器...');
             
             // 检查API Key
-            const apiKey = process.env.AMAP_MAPS_API_KEY || 'e7b3928a2e218b5acea635d76560d3fe';
+            const apiKey = process.env.AMAP_MAPS_API_KEY;
             if (!apiKey || apiKey === '请在https://lbs.amap.com申请API_Key并替换此处') {
                 console.warn('⚠️ 高德API Key未配置，将跳过高德MCP连接');
                 return;
