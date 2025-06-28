@@ -404,6 +404,10 @@ body {
   scroll-behavior: smooth;
 }
 
+.chat-container img {
+  max-width: 100%;
+}
+
 .chat-container::-webkit-scrollbar {
   width: 6px;
 }
@@ -852,6 +856,45 @@ body {
   flex: 1;
 }
 
+/* 🔥 新增：工具状态统计标签 */
+.tool-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 8px;
+}
+
+.stat-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.stat-badge.executing {
+  background: rgba(255, 193, 7, 0.1);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.2);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+.stat-badge.completed {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--accent-green);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.stat-badge.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--accent-red);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
 .tool-calls-toggle {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -896,10 +939,36 @@ body {
   margin-bottom: 12px;
   overflow: hidden;
   box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
 }
 
 .tool-call-item:last-child {
   margin-bottom: 0;
+}
+
+/* 🔥 新增：工具调用项状态样式 */
+.tool-call-item.pending {
+  border-color: rgba(156, 163, 175, 0.3);
+}
+
+.tool-call-item.executing {
+  border-color: rgba(245, 158, 11, 0.3);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1);
+  animation: toolExecuting 2s ease-in-out infinite;
+}
+
+.tool-call-item.completed {
+  border-color: rgba(34, 197, 94, 0.3);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1);
+}
+
+.tool-call-item.error {
+  border-color: rgba(239, 68, 68, 0.3);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.tool-call-item.unknown {
+  border-color: var(--border-color);
 }
 
 .tool-call-header {
@@ -911,6 +980,61 @@ body {
   align-items: center;
   font-size: 0.875rem;
   border-bottom: 1px solid var(--border-color);
+}
+
+/* 🔥 新增：工具头部左右布局 */
+.tool-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.tool-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 🔥 新增：工具状态标签 */
+.tool-status-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.tool-status-badge.pending {
+  background: rgba(156, 163, 175, 0.1);
+  color: var(--text-muted);
+  border-color: rgba(156, 163, 175, 0.2);
+}
+
+.tool-status-badge.executing {
+  background: rgba(255, 193, 7, 0.1);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.2);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+.tool-status-badge.completed {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--accent-green);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.tool-status-badge.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--accent-red);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.tool-status-badge.unknown {
+  background: rgba(156, 163, 175, 0.1);
+  color: var(--text-muted);
+  border-color: rgba(156, 163, 175, 0.2);
 }
 
 .tool-name {
@@ -1317,5 +1441,408 @@ body {
 
   .bottom-section:has(.example-questions-bottom) .input-container {
     padding: 8px 12px 12px 12px;
+  }
+}
+
+/* ==================== 多轮工具调用样式 ==================== */
+
+.multi-round-tools-container {
+  margin: 16px 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--primary-bg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.multi-round-header {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(16, 185, 129, 0.08));
+  color: var(--text-primary);
+  padding: 14px 18px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.multi-round-header:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(16, 185, 129, 0.12));
+}
+
+.multi-round-icon {
+  font-size: 1.125rem;
+  color: var(--accent-blue);
+}
+
+.multi-round-title {
+  font-weight: 600;
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.overall-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.multi-round-toggle {
+  font-size: 0.875rem;
+  color: var(--accent-blue);
+  transition: transform 0.2s ease;
+  font-weight: 600;
+}
+
+.multi-round-toggle:hover {
+  transform: scale(1.1);
+}
+
+.multi-round-toggle.expanded {
+  transform: rotate(0deg);
+}
+
+.multi-round-content {
+  padding: 16px;
+  background: var(--primary-bg);
+}
+
+/* 🔥 新增：所有工具的纵向展示 */
+.all-tools-display {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 轮次导航样式 */
+.round-navigation {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--secondary-bg);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.nav-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-right: 8px;
+}
+
+.round-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--primary-bg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  min-width: 60px;
+  justify-content: center;
+}
+
+.round-nav-btn:hover {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
+}
+
+.round-nav-btn.active {
+  background: var(--accent-blue);
+  color: white;
+  border-color: var(--accent-blue);
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+
+.round-nav-btn.executing {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.round-nav-btn.completed {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.round-nav-btn.error {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.round-nav-btn.empty {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.round-number {
+  font-weight: 600;
+}
+
+.round-count {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.round-status {
+  font-size: 0.75rem;
+  margin-left: 2px;
+}
+
+/* 空轮次样式 */
+.empty-round {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--text-muted);
+  font-style: italic;
+  background: var(--secondary-bg);
+  border-radius: var(--radius-md);
+  border: 2px dashed var(--border-color);
+}
+
+.empty-icon {
+  font-size: 1.25rem;
+  opacity: 0.7;
+}
+
+.empty-text {
+  font-size: 0.9375rem;
+}
+
+/* 单轮展示样式 */
+.single-round-display {
+  width: 100%;
+}
+
+.round-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--secondary-bg);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.round-icon {
+  color: var(--accent-blue);
+  font-size: 1rem;
+}
+
+.round-label {
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.round-count {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.round-tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 工具调用卡片样式 */
+.tool-call-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--primary-bg);
+  transition: all 0.2s ease;
+}
+
+.tool-call-card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.tool-call-card.pending {
+  border-color: rgba(156, 163, 175, 0.3);
+}
+
+.tool-call-card.executing {
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1);
+}
+
+.tool-call-card.completed {
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1);
+}
+
+.tool-call-card.error {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.tool-card-header {
+  padding: 10px 14px;
+  background: var(--secondary-bg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tool-card-header:hover {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.tool-execution-time {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--primary-bg);
+  padding: 2px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.tool-expand-btn {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: 8px;
+  transition: transform 0.2s ease;
+}
+
+.tool-expand-btn.expanded {
+  transform: rotate(0deg);
+}
+
+.tool-card-content {
+  padding: 14px;
+}
+
+.tool-arguments-section,
+.tool-result-section {
+  margin-bottom: 16px;
+}
+
+.tool-arguments-section:last-child,
+.tool-result-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tool-args-display,
+.result-json {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+  overflow-x: auto;
+  line-height: 1.4;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.result-text {
+  background: var(--secondary-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  word-wrap: break-word;
+  line-height: 1.5;
+  display: block;
+}
+
+.error-display {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* 响应式设计 - 多轮工具调用 */
+@media (max-width: 768px) {
+  .multi-round-header {
+    padding: 12px 14px;
+    font-size: 0.875rem;
+  }
+  
+  .round-navigation {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .round-nav-btn {
+    padding: 4px 8px;
+    min-width: 50px;
+    font-size: 0.75rem;
+  }
+  
+  .tool-card-header {
+    padding: 8px 12px;
+  }
+  
+  .tool-card-content {
+    padding: 12px;
+  }
+  
+  .section-title {
+    font-size: 0.8125rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .multi-round-content {
+    padding: 12px;
+  }
+  
+  .round-navigation {
+    padding: 10px 12px;
+  }
+  
+  .nav-label {
+    display: none;
+  }
+  
+  .tool-args-display,
+  .result-json {
+    font-size: 0.75rem;
+    padding: 8px;
+  }
+  
+  .round-tools-list {
+    gap: 8px;
   }
 }

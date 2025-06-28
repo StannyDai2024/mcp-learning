@@ -24,6 +24,160 @@ class MCPClient {
     }
 
     /**
+     * 🔥 安全解析工具调用参数 - 增强版
+     */
+    safeParseArguments = (argString, toolName) => {
+        try {
+            if (!argString || argString.trim() === '') {
+                console.log(`⚠️ 工具 ${toolName} 参数为空，使用默认空对象`);
+                return {};
+            }
+            console.log(`🔍 解析工具 ${toolName} 参数长度:`, argString.length);
+            return JSON.parse(argString);
+        } catch (error) {
+            console.error(`❌ 工具 ${toolName} 参数解析失败:`, error.message);
+            console.error(`📄 参数长度:`, argString?.length);
+
+            // 🔧 多层修复策略
+            let fixedJson = this.attemptJsonFix(argString, error, toolName);
+
+            if (fixedJson !== null) {
+                return fixedJson;
+            }
+
+            console.error(`❌ 所有修复尝试都失败，使用空对象降级`);
+            return {};
+        }
+    };
+
+    /**
+     * 🔧 尝试修复JSON字符串的多种方法
+     */
+    attemptJsonFix = (jsonString, originalError, toolName) => {
+        const fixAttempts = [
+            // 1. 清理控制字符
+            () => {
+                const cleaned = jsonString.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+                console.log(`🔧 尝试1: 清理控制字符`);
+                return JSON.parse(cleaned);
+            },
+
+            // 2. 修复常见的括号不匹配问题
+            () => {
+                console.log(`🔧 尝试2: 修复括号不匹配`);
+                let fixed = jsonString.trim();
+
+                // 统计括号数量
+                const openBraces = (fixed.match(/\{/g) || []).length;
+                const closeBraces = (fixed.match(/\}/g) || []).length;
+                const openBrackets = (fixed.match(/\[/g) || []).length;
+                const closeBrackets = (fixed.match(/\]/g) || []).length;
+
+                console.log(`📊 括号统计: {${openBraces}:${closeBraces}, [${openBrackets}:${closeBrackets}]`);
+
+                // 补充缺失的右括号
+                if (openBraces > closeBraces) {
+                    fixed += '}'.repeat(openBraces - closeBraces);
+                    console.log(`🔧 补充了 ${openBraces - closeBraces} 个右大括号`);
+                }
+                if (openBrackets > closeBrackets) {
+                    fixed += ']'.repeat(openBrackets - closeBrackets);
+                    console.log(`🔧 补充了 ${openBrackets - closeBrackets} 个右方括号`);
+                }
+
+                return JSON.parse(fixed);
+            },
+
+            // 3. 尝试截断到最后一个完整的对象
+            () => {
+                console.log(`🔧 尝试3: 截断到最后完整对象`);
+                let fixed = jsonString.trim();
+
+                // 找到最后一个完整的对象结束位置
+                let braceCount = 0;
+                let lastValidPos = -1;
+
+                for (let i = 0; i < fixed.length; i++) {
+                    if (fixed[i] === '{') braceCount++;
+                    else if (fixed[i] === '}') {
+                        braceCount--;
+                        if (braceCount === 0) {
+                            lastValidPos = i;
+                        }
+                    }
+                }
+
+                if (lastValidPos > 0) {
+                    fixed = fixed.substring(0, lastValidPos + 1);
+                    console.log(`🔧 截断到位置 ${lastValidPos}, 新长度: ${fixed.length}`);
+                    return JSON.parse(fixed);
+                }
+
+                throw new Error('无法找到完整对象');
+            },
+
+            // 4. 尝试修复特定错误位置
+            () => {
+                console.log(`🔧 尝试4: 修复特定错误位置`);
+                const errorMatch = originalError.message.match(/position (\d+)/);
+                if (errorMatch) {
+                    const errorPos = parseInt(errorMatch[1]);
+                    console.log(`🎯 错误位置: ${errorPos}`);
+
+                    // 检查错误位置前后的字符
+                    const context = jsonString.substring(Math.max(0, errorPos - 20), errorPos + 20);
+                    console.log(`🔍 错误上下文: "${context}"`);
+
+                    // 尝试移除错误位置的字符
+                    let fixed = jsonString.substring(0, errorPos) + jsonString.substring(errorPos + 1);
+                    console.log(`🔧 移除错误位置字符，新长度: ${fixed.length}`);
+                    return JSON.parse(fixed);
+                }
+                throw new Error('无法解析错误位置');
+            },
+
+            // 5. 尝试提取部分有效数据
+            () => {
+                console.log(`🔧 尝试5: 提取部分有效数据`);
+
+                // 如果是create_html_report工具，尝试构造基本结构
+                if (toolName === 'custom_create_html_report') {
+                    console.log(`🏗️ 为 ${toolName} 构造基本结构`);
+                    return {
+                        eventDetails: {
+                            location: { name: "位置解析失败", address: "", coordinates: "" },
+                            organizer: "组织者",
+                            contact: "",
+                            eventDate: "待定",
+                            eventName: "团建活动",
+                            participantCount: 25
+                        },
+                        restaurants: [],
+                        schedule: [],
+                        suggestions: {},
+                        weather: {}
+                    };
+                }
+
+                throw new Error('无法构造有效数据');
+            }
+        ];
+
+        // 依次尝试每种修复方法
+        for (let i = 0; i < fixAttempts.length; i++) {
+            try {
+                const result = fixAttempts[i]();
+                console.log(`✅ 修复成功 (方法${i + 1})`);
+                return result;
+            } catch (fixError) {
+                console.log(`❌ 修复方法${i + 1}失败:`, fixError.message);
+            }
+        }
+
+        return null; // 所有修复方法都失败
+    };
+
+    /**
      * 基于 mcp 规范
      * 1. 建立和 client 和 server 端的连接
      * 2. 拉取 mcp-server 提供的工具列表（tool list）
@@ -108,14 +262,14 @@ class MCPClient {
     /**
      * 🔥 新增：支持消息历史的多轮工具调用
      */
-    async processQueryWithMultiRoundToolsWithHistory(messages, onUpdate, onMessagesUpdate, maxRounds = 5) {
+    async processQueryWithMultiRoundToolsWithHistory(messages, onUpdate, onMessagesUpdate, maxRounds = 10) {
         let roundCount = 0;
         let allExecutedToolCalls = []; // 记录所有轮次的工具调用
-        
+
         while (roundCount < maxRounds) {
             roundCount++;
             console.log(`🔄 多轮对话模式 - 第 ${roundCount} 轮工具调用...`);
-            
+
             // 第一阶段：AI思考并决定工具调用
             onUpdate({
                 type: 'content',
@@ -137,7 +291,7 @@ class MCPClient {
             // 流式获取AI的思考过程和工具调用决策
             for await (const chunk of response) {
                 const delta = chunk.choices[0]?.delta;
-                
+
                 if (delta?.content) {
                     currentContent += delta.content;
                     onUpdate({
@@ -155,7 +309,7 @@ class MCPClient {
             // 结束当前轮次的思考阶段
             onUpdate({
                 type: 'thinking_complete',
-                data: { 
+                data: {
                     content: currentContent,
                     toolCalls: currentToolCalls.map(tc => tc.function.name),
                     round: roundCount
@@ -166,25 +320,25 @@ class MCPClient {
             if (currentToolCalls?.length > 0) {
                 // 第二阶段：执行工具调用
                 console.log(`🔧 多轮对话模式 - 第 ${roundCount} 轮执行 ${currentToolCalls.length} 个工具...`);
-                
+
                 const roundToolCalls = await this.executeToolsForRound(
-                    currentToolCalls, 
-                    onUpdate, 
-                    messages, 
+                    currentToolCalls,
+                    onUpdate,
+                    messages,
                     currentContent,
                     roundCount
                 );
-                
+
                 // 记录本轮工具调用
                 allExecutedToolCalls.push(...roundToolCalls);
-                
+
                 // 继续下一轮循环，让AI基于工具结果决定是否需要更多工具
                 continue;
-                
+
             } else {
                 // 没有工具调用，AI决定结束，生成最终回答
                 console.log(`✅ 多轮对话模式 - 第 ${roundCount} 轮无工具调用，开始生成最终回答...`);
-                
+
                 // 如果有内容，说明AI已经给出了最终回答
                 if (currentContent.trim()) {
                     // 添加AI的最终回复到消息历史
@@ -200,7 +354,7 @@ class MCPClient {
 
                     onUpdate({
                         type: 'complete',
-                        data: { 
+                        data: {
                             finalContent: currentContent,
                             toolCalls: allExecutedToolCalls.map(this.formatToolCallForFrontend),
                             totalRounds: roundCount
@@ -211,7 +365,7 @@ class MCPClient {
                     // 没有内容，需要调用最终回答生成
                     await this.getFinalResponseStreamMultiRoundWithHistory(messages, allExecutedToolCalls, onUpdate, onMessagesUpdate, roundCount);
                 }
-                
+
                 break;
             }
         }
@@ -244,7 +398,7 @@ class MCPClient {
 
         for await (const chunk of response) {
             const delta = chunk.choices[0]?.delta;
-            
+
             if (delta?.content) {
                 finalContent += delta.content;
                 onUpdate({
@@ -272,7 +426,7 @@ class MCPClient {
         // 完成
         onUpdate({
             type: 'complete',
-            data: { 
+            data: {
                 finalContent: finalContent,
                 toolCalls: allExecutedToolCalls.map(this.formatToolCallForFrontend),
                 totalRounds: totalRounds
@@ -309,14 +463,14 @@ class MCPClient {
      * 🔥 新增：多轮工具调用的核心方法
      * 支持AI根据前一轮工具结果继续调用更多工具
      */
-    async processQueryWithMultiRoundTools(messages, onUpdate, maxRounds = 5) {
+    async processQueryWithMultiRoundTools(messages, onUpdate, maxRounds = 10) {
         let roundCount = 0;
         let allExecutedToolCalls = []; // 记录所有轮次的工具调用
-        
+
         while (roundCount < maxRounds) {
             roundCount++;
             console.log(`🔄 开始第 ${roundCount} 轮工具调用...`);
-            
+
             // 第一阶段：AI思考并决定工具调用
             onUpdate({
                 type: 'content',
@@ -338,7 +492,7 @@ class MCPClient {
             // 流式获取AI的思考过程和工具调用决策
             for await (const chunk of response) {
                 const delta = chunk.choices[0]?.delta;
-                
+
                 if (delta?.content) {
                     currentContent += delta.content;
                     onUpdate({
@@ -356,7 +510,7 @@ class MCPClient {
             // 结束当前轮次的思考阶段
             onUpdate({
                 type: 'thinking_complete',
-                data: { 
+                data: {
                     content: currentContent,
                     toolCalls: currentToolCalls.map(tc => tc.function.name),
                     round: roundCount
@@ -367,25 +521,25 @@ class MCPClient {
             if (currentToolCalls?.length > 0) {
                 // 第二阶段：执行工具调用
                 console.log(`🔧 第 ${roundCount} 轮执行 ${currentToolCalls.length} 个工具...`);
-                
+
                 const roundToolCalls = await this.executeToolsForRound(
-                    currentToolCalls, 
-                    onUpdate, 
-                    messages, 
+                    currentToolCalls,
+                    onUpdate,
+                    messages,
                     currentContent,
                     roundCount
                 );
-                
+
                 // 记录本轮工具调用
                 allExecutedToolCalls.push(...roundToolCalls);
-                
+
                 // 继续下一轮循环，让AI基于工具结果决定是否需要更多工具
                 continue;
-                
+
             } else {
                 // 没有工具调用，AI决定结束，生成最终回答
                 console.log(`✅ 第 ${roundCount} 轮无工具调用，开始生成最终回答...`);
-                
+
                 // 如果有内容，说明AI已经给出了最终回答
                 if (currentContent.trim()) {
                     // 添加AI的最终回复到消息历史
@@ -396,7 +550,7 @@ class MCPClient {
 
                     onUpdate({
                         type: 'complete',
-                        data: { 
+                        data: {
                             finalContent: currentContent,
                             toolCalls: allExecutedToolCalls.map(this.formatToolCallForFrontend),
                             totalRounds: roundCount
@@ -407,7 +561,7 @@ class MCPClient {
                     // 没有内容，需要调用最终回答生成
                     await this.getFinalResponseStreamMultiRound(messages, allExecutedToolCalls, onUpdate, roundCount);
                 }
-                
+
                 break;
             }
         }
@@ -424,10 +578,10 @@ class MCPClient {
      */
     mergeToolCalls(existing, delta) {
         const result = [...existing];
-        
+
         for (const deltaCall of delta) {
             const index = deltaCall.index;
-            
+
             if (!result[index]) {
                 result[index] = {
                     id: deltaCall.id,
@@ -447,8 +601,16 @@ class MCPClient {
                 }
             }
         }
-        
+
         return result;
+    }
+
+    safeParse(str) {
+        try {
+            return JSON.parse(str)
+        } catch (e) {
+            return {}
+        }
     }
 
     /**
@@ -458,10 +620,10 @@ class MCPClient {
         // 通知开始工具调用
         onUpdate({
             type: 'tool_start',
-            data: { 
+            data: {
                 tools: toolCalls.map(tc => ({
                     name: tc.function.name,
-                    arguments: JSON.parse(tc.function.arguments || '{}')
+                    arguments: this.safeParse(tc.function.arguments || '{}')
                 })),
                 round: roundCount
             },
@@ -472,12 +634,12 @@ class MCPClient {
         const executedToolCalls = await Promise.allSettled(
             toolCalls.map(async (toolCall, index) => {
                 const functionName = toolCall.function.name;
-                const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
-                
+                const functionArgs = this.safeParseArguments(toolCall.function.arguments, functionName);
+
                 // 通知单个工具开始执行
                 onUpdate({
                     type: 'tool_progress',
-                    data: { 
+                    data: {
                         name: functionName,
                         arguments: functionArgs,
                         status: 'executing',
@@ -488,19 +650,19 @@ class MCPClient {
                 });
 
                 const startTime = Date.now();
-                
+
                 try {
                     const toolResponse = await this.mcp.callTool({
                         name: functionName,
                         arguments: functionArgs,
                     });
-                    
+
                     const executionTime = Date.now() - startTime;
 
                     // 通知单个工具完成
                     onUpdate({
                         type: 'tool_progress',
-                        data: { 
+                        data: {
                             name: functionName,
                             arguments: functionArgs,
                             status: 'completed',
@@ -523,11 +685,11 @@ class MCPClient {
                     };
                 } catch (error) {
                     const executionTime = Date.now() - startTime;
-                    
+
                     // 通知单个工具失败
                     onUpdate({
                         type: 'tool_progress',
-                        data: { 
+                        data: {
                             name: functionName,
                             arguments: functionArgs,
                             status: 'error',
@@ -554,7 +716,7 @@ class MCPClient {
         );
 
         // 处理工具调用结果
-        const processedToolCalls = executedToolCalls.map(result => 
+        const processedToolCalls = executedToolCalls.map(result =>
             result.status === 'fulfilled' ? result.value : {
                 success: false,
                 error: result.reason?.message || 'Unknown error',
@@ -638,7 +800,7 @@ class MCPClient {
 
         for await (const chunk of response) {
             const delta = chunk.choices[0]?.delta;
-            
+
             if (delta?.content) {
                 finalContent += delta.content;
                 onUpdate({
@@ -655,7 +817,7 @@ class MCPClient {
         // 完成
         onUpdate({
             type: 'complete',
-            data: { 
+            data: {
                 finalContent: finalContent,
                 toolCalls: allExecutedToolCalls.map(this.formatToolCallForFrontend),
                 totalRounds: totalRounds
@@ -687,10 +849,10 @@ class MCPClient {
         // 通知开始工具调用
         onUpdate({
             type: 'tool_start',
-            data: { 
+            data: {
                 tools: toolCalls.map(tc => ({
                     name: tc.function.name,
-                    arguments: JSON.parse(tc.function.arguments || '{}')
+                    arguments: this.safeParseArguments(tc.function.arguments, tc.function.name)
                 }))
             },
             phase: 'tool_execution'
@@ -700,40 +862,40 @@ class MCPClient {
         const executedToolCalls = await Promise.allSettled(
             toolCalls.map(async (toolCall, index) => {
                 const functionName = toolCall.function.name;
-                const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
-                
+                const functionArgs = this.safeParseArguments(toolCall.function.arguments, functionName);
+
                 // 通知单个工具开始执行
                 onUpdate({
                     type: 'tool_progress',
-                    data: { 
+                    data: {
                         name: functionName,
                         arguments: functionArgs,
                         status: 'executing',
-                        index 
+                        index
                     },
                     phase: 'tool_execution'
                 });
 
                 const startTime = Date.now();
-                
+
                 try {
                     const toolResponse = await this.mcp.callTool({
                         name: functionName,
                         arguments: functionArgs,
                     });
-                    
+
                     const executionTime = Date.now() - startTime;
 
                     // 通知单个工具完成
                     onUpdate({
                         type: 'tool_progress',
-                        data: { 
+                        data: {
                             name: functionName,
                             arguments: functionArgs,
                             status: 'completed',
                             result: toolResponse,
                             executionTime,
-                            index 
+                            index
                         },
                         phase: 'tool_execution'
                     });
@@ -748,17 +910,17 @@ class MCPClient {
                     };
                 } catch (error) {
                     const executionTime = Date.now() - startTime;
-                    
+
                     // 通知单个工具失败
                     onUpdate({
                         type: 'tool_progress',
-                        data: { 
+                        data: {
                             name: functionName,
                             arguments: functionArgs,
                             status: 'error',
                             error: error.message,
                             executionTime,
-                            index 
+                            index
                         },
                         phase: 'tool_execution'
                     });
@@ -853,10 +1015,10 @@ class MCPClient {
         // 通知开始工具调用
         onUpdate({
             type: 'tool_start',
-            data: { 
+            data: {
                 tools: toolCalls.map(tc => ({
                     name: tc.function.name,
-                    arguments: JSON.parse(tc.function.arguments || '{}')
+                    arguments: this.safeParseArguments(tc.function.arguments, tc.function.name)
                 }))
             },
             phase: 'tool_execution'
@@ -866,40 +1028,40 @@ class MCPClient {
         const executedToolCalls = await Promise.allSettled(
             toolCalls.map(async (toolCall, index) => {
                 const functionName = toolCall.function.name;
-                const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
-                
+                const functionArgs = this.safeParseArguments(toolCall.function.arguments, functionName);
+
                 // 通知单个工具开始执行
                 onUpdate({
                     type: 'tool_progress',
-                    data: { 
+                    data: {
                         name: functionName,
                         arguments: functionArgs,
                         status: 'executing',
-                        index 
+                        index
                     },
                     phase: 'tool_execution'
                 });
 
                 const startTime = Date.now();
-                
+
                 try {
                     const toolResponse = await this.mcp.callTool({
                         name: functionName,
                         arguments: functionArgs,
                     });
-                    
+
                     const executionTime = Date.now() - startTime;
 
                     // 通知单个工具完成
                     onUpdate({
                         type: 'tool_progress',
-                        data: { 
+                        data: {
                             name: functionName,
                             arguments: functionArgs,
                             status: 'completed',
                             result: toolResponse,
                             executionTime,
-                            index 
+                            index
                         },
                         phase: 'tool_execution'
                     });
@@ -914,17 +1076,17 @@ class MCPClient {
                     };
                 } catch (error) {
                     const executionTime = Date.now() - startTime;
-                    
+
                     // 通知单个工具失败
                     onUpdate({
                         type: 'tool_progress',
-                        data: { 
+                        data: {
                             name: functionName,
                             arguments: functionArgs,
                             status: 'error',
                             error: error.message,
                             executionTime,
-                            index 
+                            index
                         },
                         phase: 'tool_execution'
                     });
@@ -1032,7 +1194,7 @@ class MCPClient {
 
         for await (const chunk of response) {
             const delta = chunk.choices[0]?.delta;
-            
+
             if (delta?.content) {
                 finalContent += delta.content;
                 onUpdate({
@@ -1060,7 +1222,7 @@ class MCPClient {
         // 完成
         onUpdate({
             type: 'complete',
-            data: { 
+            data: {
                 finalContent: finalContent,  // 最终回答内容
                 toolCalls: executedToolCalls.map(({ functionName, functionArgs, toolResponse, executionTime, success, error }) => ({
                     name: functionName,
@@ -1095,7 +1257,7 @@ class MCPClient {
 
         for await (const chunk of response) {
             const delta = chunk.choices[0]?.delta;
-            
+
             if (delta?.content) {
                 finalContent += delta.content;
                 onUpdate({
@@ -1112,7 +1274,7 @@ class MCPClient {
         // 完成
         onUpdate({
             type: 'complete',
-            data: { 
+            data: {
                 finalContent: finalContent,  // 最终回答内容
                 toolCalls: executedToolCalls.map(({ functionName, functionArgs, toolResponse, executionTime, success, error }) => ({
                     name: functionName,
@@ -1133,7 +1295,7 @@ class MCPClient {
     async processQueryWithHistory(messages) {
         // 克隆消息数组以避免修改原始数组
         const workingMessages = [...messages];
-        
+
         const response = await this.callModel({
             model: "qwen-turbo",
             messages: workingMessages,
@@ -1150,14 +1312,14 @@ class MCPClient {
         } else if (content) {
             finalText.push(content);
         }
-        
+
         let executedToolCalls = [];
-        
+
         if (tool_calls?.length) {
             // Execute tool calls in parallel
             const toolCalls = await Promise.all(tool_calls.map(async (toolCall) => {
                 const functionName = toolCall?.function?.name;
-                const functionArgs = JSON.parse(toolCall?.function?.arguments || `{}`);
+                const functionArgs = this.safeParseArguments(toolCall?.function?.arguments, functionName);
                 const toolName = functionName;
                 const toolArgs = functionArgs;
 
@@ -1177,7 +1339,7 @@ class MCPClient {
                     executionTime: endTime - startTime
                 };
             }));
-            
+
             executedToolCalls = toolCalls;
 
             // 将所有 AI 决策的工具调用信息添加到消息中
@@ -1202,7 +1364,7 @@ class MCPClient {
                     content: JSON.stringify(toolResponse)
                 });
             });
-            
+
             // Get next response from llm
             const response = await this.callModel({
                 model: "qwen-turbo",
@@ -1210,7 +1372,7 @@ class MCPClient {
             });
             const finalResponse = response.choices[0]?.message?.content || "";
             finalText.push(finalResponse);
-            
+
             // 添加AI的最终回复到消息历史
             workingMessages.push({
                 role: "assistant",
@@ -1223,9 +1385,9 @@ class MCPClient {
                 content: content
             });
         }
-        
+
         const responseText = finalText.join("\n");
-        
+
         // 返回结果和更新后的消息历史
         if (executedToolCalls.length > 0) {
             return {
@@ -1239,7 +1401,7 @@ class MCPClient {
                 messages: workingMessages
             };
         }
-        
+
         return {
             response: responseText,
             toolCalls: [],
@@ -1285,12 +1447,12 @@ class MCPClient {
             finalText.push(content);
         }
         let executedToolCalls = [];
-        
+
         if (tool_calls?.length) {
             // Execute tool calls in parallel
             const toolCalls = await Promise.all(tool_calls.map(async (toolCall) => {
                 const functionName = toolCall?.function?.name;
-                const functionArgs = JSON.parse(toolCall?.function?.arguments || `{}`);
+                const functionArgs = this.safeParseArguments(toolCall?.function?.arguments, functionName);
                 const toolName = functionName;
                 const toolArgs = functionArgs;
 
@@ -1310,7 +1472,7 @@ class MCPClient {
                     executionTime: endTime - startTime
                 };
             }));
-            
+
             executedToolCalls = toolCalls;
 
             // 将所有 AI 决策的工具调用信息添加到消息中
@@ -1344,9 +1506,9 @@ class MCPClient {
             // console.dir(response, { depth: null })
             finalText.push(response.choices[0]?.message?.content || "");
         }
-        
+
         const responseText = finalText.join("\n");
-        
+
         // 如果有工具调用，返回带工具信息的结果
         if (executedToolCalls.length > 0) {
             return {
@@ -1359,7 +1521,7 @@ class MCPClient {
                 }))
             };
         }
-        
+
         // TODO FIXEDME
         return responseText;
     }

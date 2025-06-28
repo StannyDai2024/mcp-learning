@@ -24,8 +24,8 @@ function registerTool(toolConfig) {
 }
 
 // 原有示例工具（可选保留）
-registerTool(getAlerts())
-registerTool(getForecast())
+// registerTool(getAlerts())
+// registerTool(getForecast())
 registerTool(calculate());
 
 // 自定义业务工具

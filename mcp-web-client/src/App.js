@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import ToolCallsDisplay from './components/ToolCallsDisplay';
+import MultiRoundToolsDisplay from './components/MultiRoundToolsDisplay';
 import './App.css';
 
 const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3001/api';
@@ -63,9 +65,9 @@ const EXAMPLE_QUESTIONS = [
       - 联系方式：13800138000
 
       **规划要求：**
-      ✅ 找到附近10公里内最值得推荐的3家餐厅（不同档次）
+      ✅ 找到杭州西湖附近5公里内排名最高的3家餐厅
       ✅ 餐厅要求：有特色、环境好、适合团队聚餐
-      ✅ 获取每家餐厅的详细信息：位置、菜系、人均消费、招牌菜、图片
+      ✅ 获取排名前3家餐厅的详细信息：位置、菜系、人均消费、招牌菜、图片
       ✅ 计算从杭州华为全球培训中心到餐厅的交通路线和时间
       ✅ 查询下周天气情况，为活动安排提供参考
       ✅ 生成一份包含多方案对比的专业团建规划报告
@@ -393,8 +395,13 @@ function App() {
           updatedMessage.toolCalls = payload.tools.map(tool => ({
             name: tool.name,
             arguments: tool.arguments,
-            status: 'pending'
+            status: 'pending',
+            round: payload.round || 1  // 🔥 保存轮次信息
           }));
+          // 🔥 保存轮次信息到消息级别
+          if (payload.round) {
+            updatedMessage.currentRound = payload.round;
+          }
           break;
 
         case 'tool_progress':
@@ -407,7 +414,8 @@ function App() {
                   status: payload.status,
                   result: payload.result,
                   executionTime: payload.executionTime,
-                  error: payload.error
+                  error: payload.error,
+                  round: payload.round || tool.round || 1  // 🔥 保持轮次信息
                 };
               }
               return tool;
@@ -440,11 +448,17 @@ function App() {
           updatedMessage.phase = 'complete';
           updatedMessage.streaming = false;
           
+          // 🔥 保存多轮调用信息
+          if (payload.totalRounds) {
+            updatedMessage.totalRounds = payload.totalRounds;
+          }
+          
           // 调试信息
           console.log('✅ Complete:', {
             finalContent: payload.finalContent,
             content: payload.content,
-            toolCalls: payload.toolCalls?.length || 0
+            toolCalls: payload.toolCalls?.length || 0,
+            totalRounds: payload.totalRounds
           });
           
           // 关闭SSE连接并取消loading状态
@@ -495,67 +509,22 @@ function App() {
     );
   };
 
-  // 工具调用展示组件
-  const ToolCallsDisplay = ({ toolCalls, messageIndex }) => {
-    const isExpanded = toolCallsExpandedState[messageIndex] || false;
-    
-    const toggleExpanded = () => {
-      setToolCallsExpandedState(prev => ({
-        ...prev,
-        [messageIndex]: !isExpanded
-      }));
-    };
-    
-    if (!toolCalls || toolCalls.length === 0) return null;
+  // 🔥 优化：稳定的工具展开回调函数，确保 React.memo 正常工作
+  const handleToggleToolExpanded = useCallback((messageIndex) => {
+    setToolCallsExpandedState(prev => ({
+      ...prev,
+      [messageIndex]: !prev[messageIndex]
+    }));
+  }, []);
 
-    return (
-      <div className="tool-calls-container">
-        <div className="tool-calls-header" onClick={toggleExpanded}>
-          <span className="tool-calls-icon">🔧</span>
-          <span className="tool-calls-title">AI 使用了以下工具</span>
-          <span className={`tool-calls-toggle ${isExpanded ? 'expanded' : ''}`}>
-            {isExpanded ? '▼' : '▶'}
-          </span>
-        </div>
-        {isExpanded && (
-          <div className="tool-calls-list">
-            {toolCalls.map((toolCall, index) => (
-              <div key={index} className="tool-call-item">
-                <div className="tool-call-header">
-                  <span className="tool-name">{toolCall.name}</span>
-                  <span className="tool-time">{toolCall.executionTime}ms</span>
-                </div>
-                <div className="tool-call-details">
-                  <div className="tool-arguments">
-                    <strong>参数:</strong>
-                    <pre className="tool-args-code">
-                      {JSON.stringify(toolCall.arguments, null, 2)}
-                    </pre>
-                  </div>
-                  <div className="tool-result">
-                    <strong>{toolCall.success === false ? '错误:' : '结果:'}</strong>
-                    <div className="tool-result-content">
-                      {toolCall.success === false ? (
-                        <div className="tool-error">
-                          <span className="error-message">❌ {toolCall.error || '工具执行失败'}</span>
-                        </div>
-                      ) : typeof toolCall.result === 'object' ? (
-                        <pre className="tool-result-code">
-                          {JSON.stringify(toolCall.result, null, 2)}
-                        </pre>
-                      ) : (
-                        <span className="tool-result-text">{String(toolCall.result)}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // 🔥 使用useMemo缓存回调函数映射，避免重复创建
+  const toggleCallbacks = useMemo(() => {
+    const callbacks = {};
+    for (let i = 0; i < messages.length; i++) {
+      callbacks[i] = () => handleToggleToolExpanded(i);
+    }
+    return callbacks;
+  }, [messages.length, handleToggleToolExpanded]);
 
   // Markdown 渲染组件
   const MarkdownRenderer = ({ children }) => {
@@ -727,11 +696,38 @@ function App() {
                    )}
 
                    {/* 工具调用信息展示（完成后） */}
-                   {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && !msg.streaming && (
-                     <ToolCallsDisplay toolCalls={msg.toolCalls} messageIndex={index} />
-                   )}
+                   {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && !msg.streaming && (() => {
+                     // 🔥 智能选择单轮或多轮展示组件
+                     const hasMultipleRounds = msg.totalRounds > 1 || 
+                       (msg.toolCalls.some(tool => tool.round && tool.round > 1));
+                     
+                     const totalRounds = msg.totalRounds || 
+                       Math.max(...msg.toolCalls.map(tool => tool.round || 1));
+                     
+                     if (hasMultipleRounds) {
+                       return (
+                         <MultiRoundToolsDisplay 
+                           toolCalls={msg.toolCalls} 
+                           messageIndex={index}
+                           isExpanded={toolCallsExpandedState[index] || false}
+                           onToggleExpanded={toggleCallbacks[index]}
+                           totalRounds={totalRounds}
+                           isStreaming={false}
+                         />
+                       );
+                     } else {
+                       return (
+                         <ToolCallsDisplay 
+                           toolCalls={msg.toolCalls} 
+                           messageIndex={index}
+                           isExpanded={toolCallsExpandedState[index] || false}
+                           onToggleExpanded={toggleCallbacks[index]}
+                         />
+                       );
+                     }
+                   })()}
                    
-                                      <div className="content">
+                    <div className="content">
                      {msg.role === 'assistant' ? (
                        <div>
                          {/* 简化逻辑：优先显示finalContent，否则显示content */}
